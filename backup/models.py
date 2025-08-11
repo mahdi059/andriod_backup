@@ -5,8 +5,14 @@ from django.contrib.auth.models import User
 class Backup(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     original_file = models.FileField(upload_to='backups/')
+    original_file_name = models.CharField(max_length=255, blank=True)  
     uploaded_at = models.DateTimeField(auto_now_add=True)
     error_message = models.TextField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if self.original_file and not self.original_file_name:
+            self.original_file_name = self.original_file.name
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Backup {self.id} by {self.user.username}"
@@ -24,7 +30,7 @@ class Contact(models.Model):
 
 class Message(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='messages')
-    external_id = models.CharField(max_length=255, blank=True, null=True)  # شناسه از بکاپ
+    external_id = models.CharField(max_length=255, blank=True, null=True)
     sender = models.CharField(max_length=255, blank=True, null=True)
     receiver = models.CharField(max_length=255, blank=True, null=True)
     content = models.TextField(blank=True, null=True)
@@ -50,14 +56,16 @@ class App(models.Model):
     app_name = models.CharField(max_length=255, blank=True, null=True)
     version_code = models.CharField(max_length=50, blank=True, null=True)
     version_name = models.CharField(max_length=50, blank=True, null=True)
-    apk_path = models.CharField(max_length=500, blank=True, null=True)  # مسیر روی دیسک
+    apk_file = models.BinaryField(blank=True, null=True) 
+    apk_file_name = models.CharField(max_length=255, blank=True, null=True)  
     installed_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
 class MediaFile(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='media_files')
-    path = models.CharField(max_length=500)  # مسیر فایل روی دیسک
+    file_data = models.BinaryField(blank=True, null=True)  
+    file_name = models.CharField(max_length=255, blank=True, null=True)  
     media_type = models.CharField(max_length=20, choices=[('photo', 'Photo'), ('video', 'Video'), ('audio', 'Audio'), ('other', 'Other')], blank=True, null=True)
     mime_type = models.CharField(max_length=100, blank=True, null=True)
     size_bytes = models.BigIntegerField(blank=True, null=True)
@@ -98,6 +106,7 @@ class ChatMessage(models.Model):
 class RawBackupFile(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='raw_files')
     relative_path = models.CharField(max_length=500)
+    file_data = models.BinaryField(blank=True, null=True) 
     size_bytes = models.BigIntegerField(blank=True, null=True)
     file_type = models.CharField(max_length=100, blank=True, null=True)
     added_at = models.DateTimeField(auto_now_add=True)
