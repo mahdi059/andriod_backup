@@ -113,3 +113,5 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
+
+BACKUP_STORAGE_DIR = 'media/backups'
