@@ -10,7 +10,6 @@ import logging
 from .models import Backup
 from .serializers import BackupUploadSerializer
 from .utils import ab_to_tar_with_abe, extract_tar
-from .parser import parse_contacts_vcf
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +44,11 @@ class BackupUploadView(views.APIView):
             if not any(output_dir.iterdir()):
                 raise ValueError("Extraction completed but no files found in output directory.")
 
-            with transaction.atomic():
-                counts = parse_contacts_vcf(output_dir, backup)
-
-                backup.error_message = None
-                backup.save(update_fields=['error_message'])
-
 
             return Response({
-                "message": "Backup uploaded, extracted, and parsed successfully",
+                "message": "Backup uploaded and extracted successfully",
                 "backup_id": backup.id,
-                "parsed": counts,
+                "extracted_files_count": len(list(output_dir.rglob('*'))),
                 "backup_folder": str(backup_folder)
             }, status=status.HTTP_201_CREATED)
 
