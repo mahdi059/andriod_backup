@@ -10,6 +10,9 @@ import logging
 from .models import Backup
 from .serializers import BackupUploadSerializer
 from .utils import ab_to_tar_with_abe, extract_tar
+import traceback
+from .utils import organize_extracted_files
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,3 +60,29 @@ class BackupUploadView(views.APIView):
             backup.error_message = str(exc)
             backup.save(update_fields=['error_message'])
             return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class OrganizeMediaView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        try: 
+            backup = Backup.objects.get(pk=pk, user=request.user)
+        except Backup.DoesNotExist:
+            return Response({"error": "Backup not found"}, status=status.HTTP_404_NOT_FOUND)
+ 
+        extracted_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted"
+
+        if not extracted_dir.exists():
+            return Response({"error": "Extracted files directory not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try :
+            stats = organize_extracted_files(extracted_dir)
+            return Response({
+                "message": "Files organized successfully.",
+                "backup_id": backup.id,
+                "stats": stats
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
