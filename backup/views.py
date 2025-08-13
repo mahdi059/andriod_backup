@@ -14,6 +14,7 @@ import traceback
 from .utils import organize_extracted_files
 from pathlib import Path
 from .parser import parse_media_type
+from .parser import parse_and_save_sms
 
 logger = logging.getLogger(__name__)
 
@@ -120,3 +121,45 @@ class ParseVideosView(ParsePhotosView):
 class ParseAudiosView(ParsePhotosView):
     def post(self, request, pk):
         return self._parse(pk, "audios", "audio", request.user)
+
+
+class ParseSMSBackupView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            backup = Backup.objects.get(pk=pk, user=request.user)
+        
+        except Backup.DoesNotExist:
+            return Response({"error": "Backup not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        others_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "others"
+        
+        if not others_dir.exists():
+            return Response({"error": "others directory not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        sms_files = list(others_dir.glob("*sms*"))
+
+        if not sms_files:
+            return Response({"error": "no sms backup file found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        total_count = 0
+        errors = []
+        for sms_file in sms_files:
+            try:
+                count = parse_and_save_sms(sms_file, backup)
+                total_count += count
+            except Exception as e:
+                errors.append(str(e))
+            
+        if errors:
+            return Response({
+                "message": f"Parsed SMS files with partial errors.",
+                "total_sms_saved": total_count,
+                "errors": errors
+            }, status=status.HTTP_207_MULTI_STATUS)
+        return Response({
+            "message": "all sms files parsed successfully.",
+            "total_sms_saved": total_count
+        }, status=status.HTTP_200_OK)
+    
