@@ -1,4 +1,6 @@
 from django.contrib import admin
-from .models import MediaFile
-# Register your models here.
+from .models import MediaFile, Message
+
+
 admin.site.register(MediaFile)
+admin.site.register(Message)
