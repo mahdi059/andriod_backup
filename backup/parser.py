@@ -2,10 +2,13 @@ from pathlib import Path
 import mimetypes
 from django.utils import timezone
 from django.utils.timezone import make_aware, get_default_timezone
-from .models import MediaFile, Backup, Message
+from .models import MediaFile, Backup, Message, App
 from datetime import datetime
 import json
 import zlib
+import apkutils2
+
+
 
 def parse_media_type(media_dir: Path, backup_instance: Backup, media_type_filter: str) -> int:
     if not media_dir.exists():
@@ -91,3 +94,86 @@ def parse_and_save_sms(file_path: Path, backup_instance: Backup):
             print(f"Error saving SMS: {e}")
 
     return count
+
+def parse_apks_from_dir(others_dir, backup_instance):
+ 
+    apk_files = [f for f in others_dir.iterdir() if f.is_file() and f.suffix.lower() == ".apk"]
+    count = 0
+
+    for apk_path in apk_files:
+        try:
+            with open(apk_path, "rb") as f:
+                apk_binary = f.read()
+
+            apk_info = apkutils2.APK(str(apk_path))
+            manifest = apk_info.get_manifest()
+
+            package_name = manifest.get("package", "")
+            app_name = apk_info.get_label() if hasattr(apk_info, 'get_label') else ""
+            version_code = manifest.get("android:versionCode", "")
+            version_name = manifest.get("android:versionName", "")
+            permissions = []
+            uses_permissions = manifest.get("uses-permission", [])
+            if isinstance(uses_permissions, dict):
+
+                permissions.append(uses_permissions.get("android:name", ""))
+            elif isinstance(uses_permissions, list):
+                for perm in uses_permissions:
+                    permissions.append(perm.get("android:name", ""))
+
+            App.objects.create(
+                backup=backup_instance,
+                package_name=package_name,
+                app_name=app_name,
+                version_code=version_code,
+                version_name=version_name,
+                apk_file=apk_binary,
+                apk_file_name=apk_path.name,
+                installed_at=None,
+                permissions=permissions,
+                created_at=timezone.now(),
+            )
+
+            count += 1
+        except Exception as e:
+            print(f"Error parsing APK {apk_path.name}: {e}")
+
+    return count
+
+
+
+
+
+DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
+
+def parse_documents(folder_path: Path, backup: Backup) -> int:
+    saved_count = 0
+
+    for file_path in folder_path.rglob("*"):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() not in DOCUMENT_EXTENSIONS:
+            continue
+        if file_path.stat().st_size == 0:
+            continue  # فایل‌های خالی رو رد کن
+
+        mime_type, _ = mimetypes.guess_type(file_path.name)
+        with open(file_path, "rb") as f:
+            data = f.read()
+
+        # تبدیل mtime به datetime
+        added_at_dt = datetime.fromtimestamp(file_path.stat().st_mtime)
+
+        MediaFile.objects.create(
+            backup=backup,
+            file_name=file_path.name,
+            file_data=data,
+            media_type="document",
+            mime_type=mime_type,
+            size_bytes=file_path.stat().st_size,
+            added_at=added_at_dt
+        )
+
+        saved_count += 1
+
+    return saved_count
