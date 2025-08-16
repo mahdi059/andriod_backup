@@ -11,4 +11,9 @@ urlpatterns = [
     path('<int:pk>/parse-sms/', views.ParseSMSBackupView.as_view(), name='parse_sms'),
     path('<int:pk>/parse-apk/', views.ParseApksView.as_view(), name='parse_apk'),
     path('<int:pk>/parse-documents/', views.ParseDocumentsView.as_view(),name='parse_documents' ),
+    path('<int:pk>/scan/parse-database/', views.ScanDatabasesView.as_view(), name='scan_database'),
+    path('<int:pk>/parse-database/', views.ParseDatabaseAPIView.as_view(), name='parse_databases'),
+    path('<int:pk>/parse-json/', views.ParseJSONBackupAPIView.as_view(), name='parse_json'),
+    path('<int:pk>/media/',  views.MediaListAPIView.as_view(), name='photo-list'),
+
 ]
