@@ -154,44 +154,6 @@ def parse_apks_from_dir(others_dir, backup_instance):
 
 
 
-
-DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
-
-def parse_documents(folder_path: Path, backup: Backup) -> int:
-    saved_count = 0
-
-    for file_path in folder_path.rglob("*"):
-        if not file_path.is_file():
-            continue
-        if file_path.suffix.lower() not in DOCUMENT_EXTENSIONS:
-            continue
-        if file_path.stat().st_size == 0:
-            continue  
-
-        mime_type, _ = mimetypes.guess_type(file_path.name)
-        with open(file_path, "rb") as f:
-            data = f.read()
-
-        added_at_dt = datetime.fromtimestamp(file_path.stat().st_mtime)
-
-        MediaFile.objects.create(
-            backup=backup,
-            file_name=file_path.name,
-            file=File(f, name=file_path.name), 
-            media_type="document",
-            mime_type=mime_type,
-            size_bytes=file_path.stat().st_size,
-            added_at=added_at_dt
-        )
-
-        saved_count += 1
-
-    return saved_count
-
-
-
-
-
 SQLITE_EXTENSIONS = {".db", ".sqlite", ".sqlite3"}
 REALM_EXTENSIONS = {".realm"}
 
