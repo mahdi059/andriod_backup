@@ -6,10 +6,10 @@ from django.conf import settings
 from pathlib import Path
 import shutil
 import logging
-from .models import Backup, MediaFile
-from .serializers import BackupUploadSerializer, MediaFileSerializer
+from .models import Backup, MediaFile, Message
+from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer
 from .utils import ab_to_tar_with_abe, extract_tar, organize_extracted_files
-from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_documents, scan_and_store_databases, parse_sqlite_db, parse_json_folder
+from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, scan_and_store_databases, parse_sqlite_db, parse_json_folder
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 
@@ -283,3 +283,20 @@ class MediaListAPIView(generics.ListAPIView):
             queryset = queryset.filter(media_type=media_type)
 
         return queryset.order_by('-added_at')
+
+
+
+class MessageListAPIView(generics.ListAPIView):
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        pk = self.kwargs.get("pk")
+
+        backup = get_object_or_404(Backup, pk=pk, user=user)
+
+        queryset = Message.objects.filter(backup=backup)
+
+        return queryset.order_by('created_at')
