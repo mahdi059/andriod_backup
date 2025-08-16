@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
-
+import os
 
 class Backup(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -68,14 +68,28 @@ class App(models.Model):
 
 
 
+def media_file_path(instance, filename):
+    filename = os.path.basename(filename)
+    return f"parsed_backup/backup_{instance.backup.id}/{instance.media_type}/{filename}"
+
 class MediaFile(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='media_files')
-    file_data = models.BinaryField(blank=True, null=True)  
-    file_name = models.CharField(max_length=255, blank=True, null=True)  
-    media_type = models.CharField(max_length=20, choices=[('photo', 'Photo'), ('video', 'Video'), ('audio', 'Audio'), ('document', 'Document'), ('other', 'Other')], blank=True, null=True)
+    file = models.FileField(upload_to=media_file_path, blank=True, null=True) 
+    file_name = models.CharField(max_length=255, blank=True, null=True)
+    media_type = models.CharField(
+        max_length=20,
+        choices=[('photo', 'Photo'), ('video', 'Video'), ('audio', 'Audio'), ('document', 'Document'), ('other', 'Other')],
+        blank=True,
+        null=True
+    )
     mime_type = models.CharField(max_length=100, blank=True, null=True)
     size_bytes = models.BigIntegerField(blank=True, null=True)
     added_at = models.DateTimeField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.file_name:
+            self.file_name = self.file.name
+        super().save(*args, **kwargs)
 
 
 class SystemSetting(models.Model):
