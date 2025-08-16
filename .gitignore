@@ -163,7 +163,7 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-
+parsed_backup/
 backups/
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
