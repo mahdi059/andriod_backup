@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Backup, MediaFile
+from .models import Backup, MediaFile, Message
 
 
 class BackupUploadSerializer(serializers.ModelSerializer):
@@ -26,3 +26,12 @@ class MediaFileSerializer(serializers.ModelSerializer):
 
             return request.build_absolute_uri(obj.file.url)
         return None
+
+
+
+class MessageSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Message
+        fields = ['sender', 'receiver', 'content', 'sent_at', 'received_at', 'message_type', 'status', 'created_at']
+        
