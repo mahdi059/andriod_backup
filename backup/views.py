@@ -8,8 +8,8 @@ import shutil
 import logging
 from .models import Backup, MediaFile, Message
 from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer
-from .utils import ab_to_tar_with_abe, extract_tar, organize_extracted_files
-from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, scan_and_store_databases, parse_sqlite_db, parse_json_folder
+from .utils import ab_to_tar_with_hoardy, extract_tar, organize_extracted_files
+from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_data, store_extracted_data
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 
@@ -40,9 +40,9 @@ class BackupUploadView(views.APIView):
 
             tar_path = backup_folder / f"temp_{backup.id}.tar"
             output_dir = backup_folder / "extracted"
-            abe_jar_path = Path(settings.ABE_JAR_PATH)
+            
 
-            ab_to_tar_with_abe(original_ab_dst, tar_path, abe_jar_path)
+            ab_to_tar_with_hoardy(original_ab_dst, tar_path)
             extract_tar(tar_path, output_dir)
 
             if not any(output_dir.iterdir()):
@@ -188,55 +188,29 @@ class ParseApksView(views.APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-class ScanDatabasesView(views.APIView):
-    permission_classes = [IsAuthenticated]
-    
-    def post(self, request, pk):
-        try:
-            backup = Backup.objects.get(pk=pk, user=request.user)
-        except Backup.DoesNotExist:
-            return Response({"error": "backup not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        database_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "databases"
-
-        try:
-            counts = scan_and_store_databases(database_dir, backup)
-            return Response({
-                "message": "databases scanned and stord successfully.",
-                "count" : f"number od databases: {counts}"
-            }, status=status.HTTP_200_OK)
-        
-        except FileNotFoundError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception as e:
-            return Response({"error" : str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
 
 class ParseDatabaseAPIView(views.APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request, pk):
         backup = get_object_or_404(Backup, pk=pk, user=request.user)
+
         db_folder = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "databases"
 
         if not db_folder.exists():
             return Response({"error": "Backup folder not found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        result = {"message": "Parsing complete", "details": []}
+        contacts_data, calllogs_data = scan_and_extract_data(backup, db_folder)
 
-        for file_path in db_folder.iterdir():
-            if file_path.suffix.lower() not in [".db", ".sqlite"]:
-                continue
+        store_extracted_data(backup, contacts_data, calllogs_data)
 
-            stats = parse_sqlite_db(file_path, backup)
-            file_info = {"file": file_path.name}
-            file_info.update(stats)
-            result["details"].append(file_info)
-
-        return Response(result, status=status.HTTP_200_OK)
+        return Response({
+            "message": "Parsing complete",
+            "contacts_stored": len(contacts_data),
+            "calllogs_stored": len(calllogs_data)
+        }, status=status.HTTP_200_OK)
     
 
 
