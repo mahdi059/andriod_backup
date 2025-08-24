@@ -4,17 +4,14 @@ from django.utils import timezone
 from django.utils.timezone import make_aware, get_default_timezone
 from .models import MediaFile, Backup, Message, App, RawBackupFile, Contact, Note, CallLog, ChatMessage
 from datetime import datetime
+import sqlite3
 import json
 import zlib
 import apkutils2
-import sqlite3
 from django.core.files import File
+import re
+from typing import Dict, Iterable, List, Optional, Tuple
 
-import mimetypes
-from pathlib import Path
-from django.utils import timezone
-from django.core.files import File
-from .models import MediaFile
 
 
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
@@ -212,10 +209,7 @@ def scan_and_store_databases(db_dir: Path, backup) -> dict:
 
     return counts
 
-# 
 
-from django.utils import timezone
-from datetime import datetime
 
 def parse_sqlite_db(file_path: Path, backup):
     data_summary = {"contacts": 0, "notes": 0, "call_logs": 0}
@@ -293,8 +287,6 @@ def _parse_datetime(value):
     return timezone.now()
 
 
-# 
-
 
 def parse_json_file(file_path: Path, backup):
     summary = {"contacts": 0, "notes": 0, "call_logs": 0, "chat_messages": 0}
@@ -317,7 +309,7 @@ def parse_json_file(file_path: Path, backup):
                 )
                 summary["call_logs"] += 1
 
-            elif "phone_number" in item and "name" in item:  # احتمالا Contact
+            elif "phone_number" in item and "name" in item: 
                 Contact.objects.create(
                     backup=backup,
                     name=item.get("name", ""),
@@ -413,3 +405,197 @@ def parse_json_folder(json_folder: Path, backup):
         result["details"].append(file_info)
     
     return result
+
+
+
+CONTACT_NAME_KEYS = {"name", "display_name", "full_name", "given_name", "first_name"}
+CONTACT_SURNAME_KEYS = {"family_name", "last_name", "surname"}
+CONTACT_PHONE_KEYS = {"phone_number", "number", "mobile", "tel", "msisdn"}
+
+CALLLOG_PHONE_KEYS = {"phone_number", "number", "mobile", "tel", "msisdn"}
+CALLLOG_TYPE_KEYS = {"call_type", "type", "direction"}
+CALLLOG_DATE_KEYS = {"call_date", "date", "timestamp", "time", "created_at"}
+CALLLOG_DURATION_KEYS = {"duration_seconds", "duration", "call_duration"}
+
+EMAIL_KEYS = {"email", "e_mail", "mail"}
+GROUP_KEYS = {"group", "group_name", "label", "category"}
+ADDRESS_KEYS = {"address", "addr", "street", "city", "location"}
+
+MOBILE_REGEX = re.compile(r"^(?:\+98|0)?9\d{9}$")
+GENERIC_PHONE_REGEX = re.compile(r"^\+?\d[\d\-\s\(\)]{4,}$")
+
+
+def is_sqlite_file(path: Path) -> bool:
+    try:
+        if not path.is_file() or path.stat().st_size < 16:
+            return False
+        with path.open("rb") as f:
+            return f.read(16) == b"SQLite format 3\x00"
+    except OSError:
+        return False
+
+
+
+def normalize_phone(value: Optional[str]) -> str:
+    if not value: return ""
+    s = re.sub(r"[\s\-\(\)]", "", str(value).strip())
+    if s.startswith("0098"): return "+98" + s[4:]
+    if s.startswith("98") and not s.startswith("+"): return "+98" + s[2:]
+    return s
+
+
+
+def validate_phone_format(value: Optional[str]) -> bool:
+    if not value: return False
+    v = normalize_phone(value)
+    return bool(MOBILE_REGEX.match(v) or GENERIC_PHONE_REGEX.match(v))
+
+
+
+def parse_datetime_flexible(value) -> Optional[timezone.datetime]:
+    if value is None: return None
+    if isinstance(value, (int, float)):
+        return _from_epoch_like(value)
+
+    s = str(value).strip()
+    if not s: return None
+
+    try:
+        return timezone.datetime.fromisoformat(s)
+    except Exception:
+        pass
+
+    if s.isdigit():
+        return _from_epoch_like(int(s))
+
+    return None
+
+
+
+def _from_epoch_like(num: float) -> Optional[timezone.datetime]:
+    try:
+        length = len(str(int(num)))
+        if length <= 10:   return timezone.datetime.fromtimestamp(num, tz=timezone.utc)
+        if length <= 13:   return timezone.datetime.fromtimestamp(num / 1e3, tz=timezone.utc)
+        if length <= 16:   return timezone.datetime.fromtimestamp(num / 1e6, tz=timezone.utc)
+        if length <= 19:   return timezone.datetime.fromtimestamp(num / 1e9, tz=timezone.utc)
+    except Exception:
+        return None
+    return None
+
+
+
+def pick_first(row: Dict[str, object], keys: Iterable[str]) -> Optional[object]:
+    for k in keys:
+        if row.get(k): return row.get(k)
+    return None
+
+
+
+def _detect_contact_table(columns: set) -> bool:
+    return (columns & CONTACT_PHONE_KEYS) and (columns & (CONTACT_NAME_KEYS | CONTACT_SURNAME_KEYS))
+
+
+def _detect_calllog_table(columns: set) -> bool:
+    return (columns & CALLLOG_PHONE_KEYS) and (
+        columns & CALLLOG_DATE_KEYS or columns & CALLLOG_TYPE_KEYS or columns & CALLLOG_DURATION_KEYS
+    )
+
+
+
+def _extract_contact_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
+    phone = pick_first(row, CONTACT_PHONE_KEYS)
+    if not validate_phone_format(phone): return None
+    return {
+        "name": pick_first(row, CONTACT_NAME_KEYS) or "",
+        "phone_number": normalize_phone(phone),
+        "email": pick_first(row, EMAIL_KEYS),
+        "group": pick_first(row, GROUP_KEYS),
+        "address": pick_first(row, ADDRESS_KEYS),
+        "created_at": parse_datetime_flexible(pick_first(row, {"created_at", "date_added"})),
+    }
+
+
+
+def _map_call_type(raw) -> str:
+    if not raw: return "incoming"
+    s = str(raw).lower()
+    if s.isdigit(): return {"1":"incoming","2":"outgoing","3":"missed"}.get(s,"incoming")
+    if "out" in s: return "outgoing"
+    if "miss" in s: return "missed"
+    return "incoming"
+
+
+
+def _extract_calllog_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
+    phone = pick_first(row, CALLLOG_PHONE_KEYS)
+    if not validate_phone_format(phone): return None
+    dt = parse_datetime_flexible(pick_first(row, CALLLOG_DATE_KEYS))
+    return {
+        "phone_number": normalize_phone(phone),
+        "call_type": _map_call_type(pick_first(row, CALLLOG_TYPE_KEYS)),
+        "call_date": dt,   # ممکنه None باشه
+        "duration_seconds": int(pick_first(row, CALLLOG_DURATION_KEYS) or 0)
+    }
+
+
+
+def scan_and_extract_data(backup: Backup, db_dir: Path) -> Tuple[List[Dict], List[Dict]]:
+    contacts, calls = [], []
+    seen_contacts, seen_calls = set(), set()
+
+    for db_file in db_dir.rglob("*"):
+        if not db_file.is_file() or not is_sqlite_file(db_file):
+            continue
+        try:
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            for (table,) in cursor.fetchall():
+                try:
+                    cursor.execute(f'SELECT * FROM "{table}" LIMIT 200')
+                    col_names = [d[0].lower() for d in cursor.description]
+                    rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
+                except Exception:
+                    continue
+                if not rows: continue
+
+                if _detect_contact_table(set(col_names)):
+                    for row in rows:
+                        data = _extract_contact_row(row)
+                        if not data: continue
+                        key = (data["name"], data["phone_number"])
+                        if not data["phone_number"] or key in seen_contacts: continue
+                        seen_contacts.add(key)
+                        contacts.append(data)
+
+                elif _detect_calllog_table(set(col_names)):
+                    for row in rows:
+                        data = _extract_calllog_row(row)
+                        if not data: continue
+                        ts = int(data["call_date"].timestamp()) if data["call_date"] else 0
+                        key = (data["phone_number"], ts, data["call_type"])
+                        if key in seen_calls: continue
+                        seen_calls.add(key)
+                        calls.append(data)
+        except sqlite3.DatabaseError:
+            continue
+        finally:
+            try: conn.close()
+            except: pass
+
+    return contacts, calls
+
+
+def store_extracted_data(backup: Backup, contacts: List[Dict], calls: List[Dict]) -> Tuple[int, int]:
+    valid_contacts = [c for c in contacts if validate_phone_format(c.get("phone_number"))]
+
+    valid_calls = [
+        cl for cl in calls
+        if validate_phone_format(cl.get("phone_number")) and isinstance(cl.get("call_date"), timezone.datetime)
+    ]
+
+    Contact.objects.bulk_create([Contact(backup=backup, **c) for c in valid_contacts], batch_size=1000)
+    CallLog.objects.bulk_create([CallLog(backup=backup, **cl) for cl in valid_calls], batch_size=1000)
+
+    return len(valid_contacts), len(valid_calls)
