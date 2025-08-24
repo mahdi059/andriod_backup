@@ -3,35 +3,33 @@ import subprocess
 import tarfile
 import mimetypes
 import shutil
+import re
 
-
-def ab_to_tar_with_abe(ab_path: Path, tar_path: Path, abe_jar_path: Path) -> Path:
+def ab_to_tar_with_hoardy(ab_path: Path, tar_path: Path) -> Path:
     if not ab_path.is_file():
         raise FileNotFoundError(f"Backup file not found: {ab_path}")
-    if not abe_jar_path.is_file():
-        raise FileNotFoundError(f"abe.jar not found: {abe_jar_path}")
 
-    java_path = Path(r"C:\Program Files\Java\jdk-21\bin\java.exe")  
+    cmd = ["hoardy-adb", "unwrap", str(ab_path), str(tar_path)]
 
-    if not java_path.is_file():
-        raise FileNotFoundError(f"Java executable not found: {java_path}")
-
-    cmd = [str(java_path), '-jar', str(abe_jar_path), 'unpack', str(ab_path), str(tar_path)]
     try:
-        print(f"Running ABE jar from: {abe_jar_path} using Java at {java_path}")
+        print(f"Running hoardy-adb unwrap for: {ab_path}")
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        print(f"ABE output:\n{result.stdout}")
+        print(f"hoardy-adb output:\n{result.stdout}")
         if result.stderr:
-            print(f"ABE error output:\n{result.stderr}")
+            print(f"hoardy-adb error output:\n{result.stderr}")
     except subprocess.CalledProcessError as e:
-        print(f"ABE command failed with exit code {e.returncode}")
+        print(f"hoardy-adb command failed with exit code {e.returncode}")
         print(f"Output:\n{e.output}")
         print(f"Error:\n{e.stderr}")
-        raise RuntimeError(f"ABE unpack command failed: {e.stderr.strip() or 'Unknown error'}") from e
+        raise RuntimeError(f"hoardy-adb unwrap command failed: {e.stderr.strip() or 'Unknown error'}") from e
 
     return tar_path
 
 
+INVALID_CHARS = r'[<>:"/\\|?*]'
+
+def sanitize_filename(name: str) -> str:
+    return re.sub(INVALID_CHARS, "_", name)
 
 def extract_tar(tar_path: Path, output_dir: Path) -> None:
     if not tar_path.is_file():
@@ -41,13 +39,16 @@ def extract_tar(tar_path: Path, output_dir: Path) -> None:
 
     with tarfile.open(tar_path, 'r:*') as tar:
         for member in tar.getmembers():
-            member_path = output_dir / member.name
+            safe_name = "/".join(sanitize_filename(part) for part in member.name.split("/"))
+            member_path = output_dir / safe_name
+
             abs_output_dir = output_dir.resolve()
             abs_member_path = member_path.resolve()
             
             if not str(abs_member_path).startswith(str(abs_output_dir)):
                 raise Exception(f"Path traversal attempt detected in tar file: {member.name}")
 
+            member.name = safe_name
             tar.extract(member, path=output_dir)
 
 
