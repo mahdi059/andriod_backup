@@ -11,7 +11,7 @@ import apkutils2
 from django.core.files import File
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
-
+from .serializers import MessageParserSerializer
 
 
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
@@ -84,24 +84,34 @@ def parse_and_save_sms(file_path: Path, backup_instance: Backup):
     count = 0
     for sms in sms_list:
         try:
+            if sms.get("type") == "1":  
+                sender = sms.get("address")  
+                receiver = None              
+            else:
+                sender = None               
+                receiver = sms.get("address")
             msg_type = "sms" if sms.get("type") == "1" else "mms"
 
-            msg = Message(
-                backup=backup_instance,
-                sender=sms.get("address"),
-                receiver=None,
-                content=sms.get("body"),
-                sent_at=convert_timestamp(sms.get("date_sent")),
-                received_at=convert_timestamp(sms.get("date")),
-                status=sms.get("status"),
-                message_type=msg_type,
-            )
-            msg.save()
+            serializer = MessageParserSerializer(
+                data={
+                    'backup' : backup_instance.id,
+                    'sender':sender,
+                    'receiver' : receiver,
+                    'content' : sms.get("body"),
+                    'sent_at' : convert_timestamp(sms.get("date_sent")),
+                    'received_at' : convert_timestamp(sms.get("date")),
+                    'status' : int(sms.get("status") or 0),
+                    'message_type' : msg_type,
+            })
+            
+            if serializer.is_valid():
+                serializer.save()
             count += 1
         except Exception as e:
             print(f"Error saving SMS: {e}")
 
     return count
+
 
 def parse_apks_from_dir(others_dir, backup_instance):
  
