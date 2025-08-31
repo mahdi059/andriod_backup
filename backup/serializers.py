@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Backup, MediaFile, Message
-
+import re
 
 class BackupUploadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -34,4 +34,47 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ['sender', 'receiver', 'content', 'sent_at', 'received_at', 'message_type', 'status', 'created_at']
+
+
+
+MOBILE_REGEX = re.compile(r"^(?:\+98|0)?9\d{9}$")
+
+class MessageParserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Message
+        fields = "__all__"
+
+    def validate_sender(self, value):
+        if value and not MOBILE_REGEX.match(value):
+            raise serializers.ValidationError("Invalid sender phone number format.")
+        return value
+    
+
+    def validate_receiver(self, value):
+        if value and not MOBILE_REGEX.match(value):
+            raise serializers.ValidationError("invalid receiver phone number format.")
+        return value
+    
+    def validate_content(self, value):
+        if not value:
+            raise serializers.ValidationError("message content cannot be empty.")
+        if len(value) > 10000:
+            raise serializers.ValidationError("message content is too long.")
         
+        return value
+    
+    def validate_sent_at(self, value):
+        if value is None:
+            raise serializers.ValidationError("Sent timestamp cannot be None.")
+        return value
+    
+    def validate_received_at(self, value):
+        if value is  None:
+            raise serializers.ValidationError("Received timestamp cannot be None.")
+        return value
+    
+    def validate_message_type(self, value):
+        if value not in ("sms", "mms"):
+            raise serializers.ValidationError("Message type must be 'sms' or 'mms'.")
+        return value
