@@ -6,8 +6,8 @@ from django.conf import settings
 from pathlib import Path
 import shutil
 import logging
-from .models import Backup, MediaFile, Message
-from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer
+from .models import Backup, MediaFile, Message, Contact
+from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer
 from .utils import ab_to_tar_with_hoardy, extract_tar, organize_extracted_files
 from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_data, store_extracted_data
 from django.shortcuts import get_object_or_404
@@ -281,5 +281,22 @@ class MessageListAPIView(generics.ListAPIView):
         backup = get_object_or_404(Backup, pk=pk, user=user)
 
         queryset = Message.objects.filter(backup=backup)
+
+        return queryset.order_by('created_at')
+
+
+
+class ContactListAPIView(generics.ListAPIView):
+    serializer_class = ContactSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        pk = self.kwargs.get("pk")
+
+        backup = get_object_or_404(Backup, pk=pk, user=user)
+
+        queryset = Contact.objects.filter(backup=backup)
 
         return queryset.order_by('created_at')
