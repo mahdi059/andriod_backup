@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Backup, MediaFile, Message
+from .models import Backup, MediaFile, Message, Contact
 from pathlib import Path
 import re
 
@@ -101,3 +101,11 @@ class MediaParserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid file path: Path traversal detected.")
         
         return attrs
+    
+
+
+class ContactSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Contact
+        fields = "__all__"
