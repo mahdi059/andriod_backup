@@ -1,8 +1,8 @@
 from rest_framework import serializers
 from .models import Backup, MediaFile, Message, Contact
 from pathlib import Path
+from django.utils import timezone
 import re
-
 
 class BackupUploadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -109,3 +109,43 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = "__all__"
+
+
+
+MOBILE_REGEX = re.compile(r"^(?:\+98|0)?9\d{9}$")
+GENERIC_PHONE_REGEX = re.compile(r"^\+?\d[\d\-\s\(\)]{4,}$")
+
+
+def validate_phone_format(value: str) -> bool:
+    if not value: return False
+
+    return bool(MOBILE_REGEX.match(value) or GENERIC_PHONE_REGEX.match(value))
+
+
+class ContactParserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Contact
+        fields = "__all__"
+
+
+    def validate_name(self, value):
+        if not value:
+            raise serializers.ValidationError("Name cannot be empty.")
+        if len(value) > 255:
+            raise serializers.ValidationError("Name is too long.")
+        return value
+    
+
+    def validate_phone_number(self, value):
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        if not validate_phone_format(value):
+            raise serializers.ValidationError("Invalid phone number format.")
+        return value
+    
+
+    def validate_created_at(self, value):
+        if value is None or not isinstance(value, timezone.datetime):
+            raise serializers.ValidationError("Created_at must be a valid datetime.")
+        return value
