@@ -98,30 +98,39 @@ class ParsePhotosView(views.APIView):
     def _parse(self, pk, folder_name, media_type, user):
         try:
             backup = Backup.objects.get(pk=pk, user=user)
-
         except Backup.DoesNotExist:
-            return Response({"error": "Backup not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Backup not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         media_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / folder_name
 
         try:
             count = parse_media_type(media_dir, backup, media_type)
-            return Response({"message": f"{media_type.capitalize()}s parsed successfully", "count": count})
+            return Response(
+                {"message": f"{media_type.capitalize()}s parsed successfully", "count": count},
+                status=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": f"Unexpected error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
-        
-
 class ParseVideosView(ParsePhotosView):
     def post(self, request, pk):
         return self._parse(pk, "videos", "video", request.user)
     
-
 class ParseAudiosView(ParsePhotosView):
     def post(self, request, pk):
         return self._parse(pk, "audios", "audio", request.user)
     
-
 class ParseDocumentsView(ParsePhotosView):
     def post(self, request, pk):
         return self._parse(pk, "documents", "document", request.user)
