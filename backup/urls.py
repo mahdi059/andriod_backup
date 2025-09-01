@@ -15,5 +15,6 @@ urlpatterns = [
     path('<int:pk>/parse-json/', views.ParseJSONBackupAPIView.as_view(), name='parse_json'),
     path('<int:pk>/media/',  views.MediaListAPIView.as_view(), name='media-list'),
     path('<int:pk>/sms-list/', views.MessageListAPIView.as_view(), name='sms-list'),
+    path('<int:pk>/contact-list/', views.ContactListAPIView.as_view(), name='contact-list'),
 
 ]
