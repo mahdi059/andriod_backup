@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import Backup, MediaFile, Message
+from pathlib import Path
 import re
+
 
 class BackupUploadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -78,3 +80,24 @@ class MessageParserSerializer(serializers.ModelSerializer):
         if value not in ("sms", "mms"):
             raise serializers.ValidationError("Message type must be 'sms' or 'mms'.")
         return value
+    
+
+
+class MediaParserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MediaFile
+        fields = "__all__"
+
+    
+    def validate(self, attrs):
+        base_dir = Path("parsed_backup") / f"backup_{attrs['backup']}" / attrs["media_type"]
+        file_path = (base_dir / attrs["file_name"]).resolve()
+
+        try:
+            file_path.relative_to(base_dir.resolve())
+
+        except ValueError:
+            raise serializers.ValidationError("Invalid file path: Path traversal detected.")
+        
+        return attrs
