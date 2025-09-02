@@ -464,6 +464,7 @@ GROUP_KEYS = {"group", "group_name", "label", "category"}
 ADDRESS_KEYS = {"address", "addr", "street", "city", "location"}
 
 
+
 def normalize_phone(value: str) -> str:
     if not value:
         return ""
@@ -483,8 +484,6 @@ def is_sqlite_file(path: Path) -> bool:
     except OSError:
         return False
 
-
-
 def _from_epoch_like(num: float) -> Optional[datetime]:
     try:
         length = len(str(int(num)))
@@ -496,23 +495,18 @@ def _from_epoch_like(num: float) -> Optional[datetime]:
             return datetime.fromtimestamp(num / 1_000_000, tz=dt_timezone.utc)
         if length <= 19:
             return datetime.fromtimestamp(num / 1_000_000_000, tz=dt_timezone.utc)
-    except Exception as e:
+    except Exception:
         return None
     return None
 
-
 def parse_datetime_flexible(value) -> Optional[datetime]:
-
     if value is None:
         return None
-
     if isinstance(value, (int, float)):
         return _from_epoch_like(value)
-
     s = str(value).strip()
     if not s:
         return None
-
     try:
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
@@ -520,16 +514,12 @@ def parse_datetime_flexible(value) -> Optional[datetime]:
         return dt
     except Exception:
         pass
-
     if s.isdigit():
         try:
             return _from_epoch_like(int(float(s)))
         except Exception:
             return None
-
     return None
-
-
 
 def pick_first(row: Dict[str, object], keys: Iterable[str]) -> Optional[object]:
     for k in keys:
@@ -587,9 +577,10 @@ def _extract_calllog_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
         "duration_seconds": int(pick_first(row, CALLLOG_DURATION_KEYS) or 0)
     }
 
-def scan_and_extract_data(backup: "Backup", db_dir: Path) -> Tuple[List[Dict], List[Dict]]:
-    contacts, calls = [], []
-    seen_contacts, seen_calls = set(), set()
+
+def scan_and_extract_contacts(backup: "Backup", db_dir: Path) -> List[Dict]:
+    contacts = []
+    seen_contacts = set()
     for db_file in db_dir.rglob("*"):
         if not db_file.is_file() or not is_sqlite_file(db_file):
             continue
@@ -604,31 +595,18 @@ def scan_and_extract_data(backup: "Backup", db_dir: Path) -> Tuple[List[Dict], L
                     rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
                 except Exception:
                     continue
-                if not rows:
+                if not rows or not _detect_contact_table(set(col_names)):
                     continue
-                if _detect_contact_table(set(col_names)):
-                    for row in rows:
-                        data = _extract_contact_row(row)
-                        if not data:
-                            continue
-                        data["backup"] = backup.id
-                        key = (data["name"], data["phone_number"])
-                        if key in seen_contacts:
-                            continue
-                        seen_contacts.add(key)
-                        contacts.append(data)
-                elif _detect_calllog_table(set(col_names)):
-                    for row in rows:
-                        data = _extract_calllog_row(row)
-                        if not data:
-                            continue
-                        data["backup"] = backup.id
-                        ts = int(data["call_date"].timestamp()) if data["call_date"] else 0
-                        key = (data["phone_number"], ts, data["call_type"])
-                        if key in seen_calls:
-                            continue
-                        seen_calls.add(key)
-                        calls.append(data)
+                for row in rows:
+                    data = _extract_contact_row(row)
+                    if not data:
+                        continue
+                    data["backup"] = backup.id
+                    key = (data["name"], data["phone_number"])
+                    if key in seen_contacts:
+                        continue
+                    seen_contacts.add(key)
+                    contacts.append(data)
         except sqlite3.DatabaseError:
             continue
         finally:
@@ -636,13 +614,55 @@ def scan_and_extract_data(backup: "Backup", db_dir: Path) -> Tuple[List[Dict], L
                 conn.close()
             except:
                 pass
-    return contacts, calls
+    return contacts
 
-def store_extracted_data(backup: "Backup", contacts: List[Dict], calls: List[Dict]) -> Tuple[int, int]:
-    contact_serializer = ContactParserSerializer(data=contacts, many=True)
-    contact_serializer.is_valid(raise_exception=True)
-    contact_serializer.save(backup=backup)
-    call_serializer = CallLogParserSerializer(data=calls, many=True)
-    call_serializer.is_valid(raise_exception=True)
-    call_serializer.save(backup=backup)
-    return len(contact_serializer.data), len(call_serializer.data)
+def scan_and_extract_calllogs(backup: "Backup", db_dir: Path) -> List[Dict]:
+    calls = []
+    seen_calls = set()
+    for db_file in db_dir.rglob("*"):
+        if not db_file.is_file() or not is_sqlite_file(db_file):
+            continue
+        try:
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            for (table,) in cursor.fetchall():
+                try:
+                    cursor.execute(f'SELECT * FROM "{table}" LIMIT 200')
+                    col_names = [d[0].lower() for d in cursor.description]
+                    rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
+                except Exception:
+                    continue
+                if not rows or not _detect_calllog_table(set(col_names)):
+                    continue
+                for row in rows:
+                    data = _extract_calllog_row(row)
+                    if not data:
+                        continue
+                    data["backup"] = backup.id
+                    ts = int(data["call_date"].timestamp()) if data["call_date"] else 0
+                    key = (data["phone_number"], ts, data["call_type"])
+                    if key in seen_calls:
+                        continue
+                    seen_calls.add(key)
+                    calls.append(data)
+        except sqlite3.DatabaseError:
+            continue
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
+    return calls
+
+def store_contacts(backup: "Backup", contacts: List[Dict]) -> int:
+    serializer = ContactParserSerializer(data=contacts, many=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(backup=backup)
+    return len(serializer.data)
+
+def store_calllogs(backup: "Backup", calls: List[Dict]) -> int:
+    serializer = CallLogParserSerializer(data=calls, many=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(backup=backup)
+    return len(serializer.data)
