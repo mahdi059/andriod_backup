@@ -104,6 +104,14 @@ class MediaParserSerializer(serializers.ModelSerializer):
     
 
 
+class CallLogSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CallLog
+        fields = "__all__"
+
+
+
 class ContactSerializer(serializers.ModelSerializer):
 
     class Meta:
