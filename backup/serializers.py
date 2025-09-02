@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from .models import Backup, MediaFile, Message, Contact
+from .models import Backup, MediaFile, Message, Contact, CallLog
 from pathlib import Path
-from django.utils import timezone
+from datetime import datetime, timezone
 import re
 
 class BackupUploadSerializer(serializers.ModelSerializer):
@@ -146,6 +146,48 @@ class ContactParserSerializer(serializers.ModelSerializer):
     
 
     def validate_created_at(self, value):
-        if value is None or not isinstance(value, timezone.datetime):
+        print("DEBUG created_at value:", value, type(value))
+        if value is None or not isinstance(value, datetime):
             raise serializers.ValidationError("Created_at must be a valid datetime.")
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
+    
+
+
+CALL_TYPES = {"incoming", "outgoing", "missed"}
+
+    
+class CallLogParserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CallLog
+        fields = "__all__"
+
+    def validate_phone_number(self, value):
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        if not validate_phone_format(value):
+            raise serializers.ValidationError("Invalid phone number format.")
+        return value
+    
+
+    def validate_call_type(self, value):
+        value = value.lower()
+        if value not in CALL_TYPES:
+            raise serializers.ValidationError(f"Call type must be one of {CALL_TYPES}.")
+        return value
+    
+    
+    def validate_duration_seconds(self, value): 
+        if not isinstance(value, int) or value < 0:
+            raise serializers.ValidationError("Durations seconds must be a non-negative integer.")
+        return value
+    
+
+    def validate_call_date(self, value):
+        if value is None or not isinstance(value, datetime):
+            raise serializers.ValidationError("Call_date must be a valid datetime.")
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
         return value
