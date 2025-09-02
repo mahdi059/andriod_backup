@@ -222,6 +222,25 @@ class ParseContactsAPIView(views.APIView):
     
 
 
+class ParseCallLogsAPIView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        backup = get_object_or_404(Backup, pk=pk, user=request.user)
+
+        db_folder = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "databases"
+
+        if not db_folder.exists():
+            return Response({"error" : "Backup folder not found"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        calllogs_data = scan_and_extract_calllogs(backup, db_folder)
+
+        calllogs_stored = store_calllogs(backup, calllogs_data)
+
+        return Response({
+            "message" : "Parsing complete",
+            "CallLogs_stored" : calllogs_stored,
+        }, status=status.HTTP_200_OK)
 
 
 
