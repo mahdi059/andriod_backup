@@ -6,8 +6,8 @@ from django.conf import settings
 from pathlib import Path
 import shutil
 import logging
-from .models import Backup, MediaFile, Message, Contact
-from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer
+from .models import Backup, MediaFile, Message, Contact, CallLog
+from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer
 from .utils import ab_to_tar_with_hoardy, extract_tar, organize_extracted_files
 from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_data, store_extracted_data
 from django.shortcuts import get_object_or_404
@@ -298,5 +298,22 @@ class ContactListAPIView(generics.ListAPIView):
         backup = get_object_or_404(Backup, pk=pk, user=user)
 
         queryset = Contact.objects.filter(backup=backup)
+
+        return queryset.order_by('created_at')
+    
+
+
+class CallLogListAPIView(generics.ListAPIView):
+    serializer_class = CallLogSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        pk = self.kwargs.get("pk")
+
+        backup = get_object_or_404(Backup, pk=pk, user=user)
+
+        queryset = CallLog.objects.filter(backup=backup)
 
         return queryset.order_by('created_at')
