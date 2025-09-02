@@ -9,7 +9,7 @@ import logging
 from .models import Backup, MediaFile, Message, Contact, CallLog
 from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer
 from .utils import ab_to_tar_with_hoardy, extract_tar, organize_extracted_files
-from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_data, store_extracted_data
+from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_contacts, scan_and_extract_calllogs, store_contacts, store_calllogs
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 
@@ -200,7 +200,7 @@ class ParseApksView(views.APIView):
         
 
 
-class ParseDatabaseAPIView(views.APIView):
+class ParseContactsAPIView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
@@ -211,16 +211,18 @@ class ParseDatabaseAPIView(views.APIView):
         if not db_folder.exists():
             return Response({"error": "Backup folder not found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        contacts_data, calllogs_data = scan_and_extract_data(backup, db_folder)
+        contacts_data = scan_and_extract_contacts(backup, db_folder)
 
-        store_extracted_data(backup, contacts_data, calllogs_data)
+        contacts_stored = store_contacts(backup, contacts_data)
 
         return Response({
             "message": "Parsing complete",
-            "contacts_stored": len(contacts_data),
-            "calllogs_stored": len(calllogs_data)
+            "contacts_stored": contacts_stored,
         }, status=status.HTTP_200_OK)
     
+
+
+
 
 
 
