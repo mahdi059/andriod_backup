@@ -9,7 +9,7 @@ import logging
 from .models import Backup, MediaFile, Message, Contact, CallLog
 from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer
 from .utils import ab_to_tar_with_hoardy, extract_tar, organize_extracted_files
-from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, parse_json_folder, scan_and_extract_contacts, scan_and_extract_calllogs, store_contacts, store_calllogs
+from .parser import parse_media_type, parse_and_save_sms, parse_apks_from_dir, scan_and_extract_contacts, scan_and_extract_calllogs, store_contacts, store_calllogs
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 
@@ -242,31 +242,6 @@ class ParseCallLogsAPIView(views.APIView):
             "CallLogs_stored" : calllogs_stored,
         }, status=status.HTTP_200_OK)
 
-
-
-
-class ParseJSONBackupAPIView(views.APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, pk):
-        
-        backup = get_object_or_404(Backup, pk=pk, user=request.user)
-        json_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "configs"
-
-
-        if not json_dir.exists():
-            return Response({"error": "configs dir not found."}, status=status.HTTP_404_NOT_FOUND)
-        
-        result = parse_json_folder(json_dir, backup)
-        return Response({
-            "message": "json files parsed successfuly.",
-            "result": result
-
-        },status=status.HTTP_200_OK)
-
-
-
-#  ...
 
 
 class MediaListAPIView(generics.ListAPIView):
