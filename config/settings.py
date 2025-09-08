@@ -3,7 +3,6 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ABE_JAR_PATH = BASE_DIR / 'tools' / 'abe.jar'
 
 
 SECRET_KEY = 'django-insecure-(i+hc4290kf=yli%%7@ilb0n-k^_=qv6$@_0pqiza&__-y8r8r'
@@ -23,7 +22,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'backup'
+    'backup',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
