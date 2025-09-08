@@ -2,8 +2,11 @@ from pathlib import Path
 import subprocess
 import tarfile
 import mimetypes
-import shutil
 import re
+from minio import Minio
+from minio.error import S3Error
+
+
 
 def ab_to_tar_with_hoardy(ab_path: Path, tar_path: Path) -> Path:
     if not ab_path.is_file():
@@ -82,9 +85,27 @@ def categorize_media_file(file_path: Path) -> str:
 
     return "others"
 
-def organize_extracted_files(extracted_dir: Path) -> dict:
+
+
+minio_client = Minio(
+    "localhost:9000", 
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    secure=False
+)
+
+BUCKET_NAME = "backups"
+
+def ensure_bucket():
+    found = minio_client.bucket_exists(BUCKET_NAME)
+    if not found:
+        minio_client.make_bucket(BUCKET_NAME)
+
+def organize_extracted_files_to_minio(extracted_dir: Path, backup_id: int) -> dict:
     if not extracted_dir.exists():
         raise FileNotFoundError(f"Extracted directory not found: {extracted_dir}")
+
+    ensure_bucket()
 
     stats = {cat: 0 for cat in MEDIA_CATEGORIES.keys()}
     stats["others"] = 0
@@ -94,13 +115,18 @@ def organize_extracted_files(extracted_dir: Path) -> dict:
             continue
 
         category = categorize_media_file(file_path)
-        category_dir = extracted_dir / category
-        category_dir.mkdir(exist_ok=True)
+        object_name = f"{backup_id}/{category}/{file_path.name}"
 
-        target_path = category_dir / file_path.name
-        if file_path != target_path:
-            shutil.move(str(file_path), str(target_path))
-
-        stats[category] += 1
+        
+        try:
+            minio_client.fput_object(
+                BUCKET_NAME,
+                object_name,
+                str(file_path)
+            )
+            stats[category] += 1
+            file_path.unlink()
+        except S3Error as e:
+            print(f"Failed to upload {file_path} -> {e}")
 
     return stats
