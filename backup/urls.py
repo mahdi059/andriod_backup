@@ -4,7 +4,7 @@ from . import views
 
 urlpatterns = [
     path('upload/', views.BackupUploadView.as_view(), name='upload-backup'),
-    path('<int:pk>/organize_media/', views.OrganizeMediaView.as_view(), name='organize-media'),
+    path('<int:pk>/status/', views.BackupStatusView.as_view(), name='backup-status'),
     path('<int:pk>/parse-photos/', views.ParsePhotosView.as_view(), name='parse_photo'),
     path('<int:pk>/parse-videos/', views.ParseVideosView.as_view(), name='parse_videos'),
     path('<int:pk>/parse-audios/', views.ParseAudiosView.as_view(), name='parse_audios'),
