@@ -9,6 +9,7 @@ class Backup(models.Model):
     original_file_name = models.CharField(max_length=255, blank=True)  
     uploaded_at = models.DateTimeField(auto_now_add=True)
     error_message = models.TextField(blank=True, null=True)
+    processed = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if self.original_file and not self.original_file_name:
