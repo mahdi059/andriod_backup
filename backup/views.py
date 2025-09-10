@@ -8,7 +8,7 @@ from .models import Backup, MediaFile, Message, Contact, CallLog
 from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
-from .parser.media_parser import  parse_media_type
+from .parser.media_parser import  parse_media_type_minio
 from .parser.sms_parser import parse_and_save_sms
 from .parser.apk_parser import parse_apks_from_dir
 from .parser.calllog_parser import scan_and_extract_calllogs, store_calllogs
@@ -29,10 +29,8 @@ class BackupUploadView(views.APIView):
         backup = serializer.save()
 
         try:
-            original_ab_src = Path(backup.original_file.path)
-            if not original_ab_src.exists() or original_ab_src.stat().st_size == 0:
+            if not backup.original_file or backup.original_file.size == 0:
                 raise ValueError("Uploaded backup file is missing or empty.")
-
 
             process_backup_task.delay(backup.id)
 
@@ -68,9 +66,9 @@ class ParsePhotosView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
-        return self._parse(pk, "photos", "photo", request.user)
+        return self._parse(pk, "photo", request.user)
     
-    def _parse(self, pk, folder_name, media_type, user):
+    def _parse(self, pk, media_type, user):
         try:
             backup = Backup.objects.get(pk=pk, user=user)
         except Backup.DoesNotExist:
@@ -78,11 +76,9 @@ class ParsePhotosView(views.APIView):
                 {"error": "Backup not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-        
-        media_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / folder_name
 
         try:
-            count = parse_media_type(media_dir, backup, media_type)
+            count = parse_media_type_minio(backup, media_type)
             return Response(
                 {"message": f"{media_type.capitalize()}s parsed successfully", "count": count},
                 status=status.HTTP_200_OK
@@ -98,17 +94,19 @@ class ParsePhotosView(views.APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
+
 class ParseVideosView(ParsePhotosView):
     def post(self, request, pk):
-        return self._parse(pk, "videos", "video", request.user)
+        return self._parse(pk, "video", request.user)
     
 class ParseAudiosView(ParsePhotosView):
     def post(self, request, pk):
-        return self._parse(pk, "audios", "audio", request.user)
+        return self._parse(pk, "audio", request.user)
     
 class ParseDocumentsView(ParsePhotosView):
     def post(self, request, pk):
-        return self._parse(pk, "documents", "document", request.user)
+        return self._parse(pk, "document", request.user)
+
 
 
 
