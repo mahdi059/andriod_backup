@@ -69,28 +69,18 @@ class App(models.Model):
 
 
 
-def media_file_path(instance, filename):
-    filename = os.path.basename(filename)
-    return f"parsed_backup/backup_{instance.backup.id}/{instance.media_type}/{filename}"
-
 class MediaFile(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='media_files')
-    file = models.FileField(upload_to=media_file_path, blank=True, null=True) 
-    file_name = models.CharField(max_length=255, blank=True, null=True)
+    file_name = models.CharField(max_length=255)
     media_type = models.CharField(
         max_length=20,
-        choices=[('photo', 'Photo'), ('video', 'Video'), ('audio', 'Audio'), ('document', 'Document'), ('other', 'Other')],
-        blank=True,
-        null=True
+        choices=[('photo', 'Photo'), ('video', 'Video'), ('audio', 'Audio'), ('document', 'Document'), ('other', 'Other')]
     )
     mime_type = models.CharField(max_length=100, blank=True, null=True)
     size_bytes = models.BigIntegerField(blank=True, null=True)
-    added_at = models.DateTimeField(blank=True, null=True)
+    added_at = models.DateTimeField(default=timezone.now)
+    minio_path = models.CharField(max_length=500, blank=True, null=True)  # مسیر فایل در MinIO
 
-    def save(self, *args, **kwargs):
-        if self.file and not self.file_name:
-            self.file_name = self.file.name
-        super().save(*args, **kwargs)
 
 
 class SystemSetting(models.Model):
