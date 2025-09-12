@@ -54,16 +54,16 @@ class CallLog(models.Model):
 
 class App(models.Model):
     backup = models.ForeignKey(Backup, on_delete=models.CASCADE, related_name='apps')
-    package_name = models.CharField(max_length=500) 
+    package_name = models.CharField(max_length=500)
     app_name = models.CharField(max_length=255, blank=True, null=True)
     version_code = models.CharField(max_length=50, blank=True, null=True)
     version_name = models.CharField(max_length=50, blank=True, null=True)
-    apk_file = models.BinaryField(blank=True, null=True) 
     apk_file_name = models.CharField(max_length=255, blank=True, null=True)
+    minio_path = models.CharField(max_length=500, blank=True, null=True) 
     permissions = models.JSONField(blank=True, null=True, default=list)
     installed_at = models.DateTimeField(blank=True, null=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    
+    created_at = models.DateTimeField(auto_now_add=True)
+
     def __str__(self):
         return f"{self.app_name or self.package_name} ({self.version_name})"
 
