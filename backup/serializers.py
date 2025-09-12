@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Backup, MediaFile, Message, Contact, CallLog
+from .models import Backup, MediaFile, Message, Contact, CallLog, App
 from pathlib import Path
 from datetime import datetime, timezone
 import re
@@ -109,18 +109,7 @@ class MediaParserSerializer(serializers.ModelSerializer):
         model = MediaFile
         fields = "__all__"
 
-    
-    def validate(self, attrs):
-        base_dir = Path("parsed_backup") / f"backup_{attrs['backup']}" / attrs["media_type"]
-        file_path = (base_dir / attrs["file_name"]).resolve()
 
-        try:
-            file_path.relative_to(base_dir.resolve())
-
-        except ValueError:
-            raise serializers.ValidationError("Invalid file path: Path traversal detected.")
-        
-        return attrs
     
 
 
@@ -219,3 +208,13 @@ class CallLogParserSerializer(serializers.ModelSerializer):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value
+    
+
+
+class AppParserSerializer(serializers.ModelSerializer):
+    backup = serializers.PrimaryKeyRelatedField(queryset=Backup.objects.all())
+    
+    class Meta:
+        model = App
+        fields = "__all__"
+
