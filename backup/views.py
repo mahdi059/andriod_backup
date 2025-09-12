@@ -10,9 +10,9 @@ from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 from .parser.media_parser import  parse_media_type_minio
 from .parser.sms_parser import parse_and_save_sms_minio
-from .parser.apk_parser import parse_apks_from_dir
-from .parser.calllog_parser import scan_and_extract_calllogs, store_calllogs
-from .parser.contacts_parser import scan_and_extract_contacts, store_contacts
+from .parser.apk_parser import parse_apks_with_minio
+from .parser.calllog_parser import scan_and_extract_calllogs_minio, store_calllogs
+from .parser.contacts_parser import scan_and_extract_contacts_minio, store_contacts
 from .tasks import process_backup_task
 
 
@@ -135,11 +135,9 @@ class ParseApksView(views.APIView):
             backup = Backup.objects.get(pk=pk, user=request.user)
         except Backup.DoesNotExist:
             return Response({"error": "backup not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        others_dir = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "others"
 
         try:
-            count = parse_apks_from_dir(others_dir, backup)
+            count = parse_apks_with_minio(backup)
             return Response({
                 "message" : f"{count} apks parsed successfully."}, status=status.HTTP_200_OK)
         except Exception as e:
@@ -147,19 +145,19 @@ class ParseApksView(views.APIView):
 
         
 
-
 class ParseContactsAPIView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
         backup = get_object_or_404(Backup, pk=pk, user=request.user)
 
-        db_folder = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "databases"
+        contacts_data = scan_and_extract_contacts_minio(backup)
 
-        if not db_folder.exists():
-            return Response({"error": "Backup folder not found"}, status=status.HTTP_400_BAD_REQUEST)
-
-        contacts_data = scan_and_extract_contacts(backup, db_folder)
+        if not contacts_data:
+            return Response(
+                {"error": "No contact data found in Minio backup"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         contacts_stored = store_contacts(backup, contacts_data)
 
@@ -175,13 +173,14 @@ class ParseCallLogsAPIView(views.APIView):
 
     def post(self, request, pk):
         backup = get_object_or_404(Backup, pk=pk, user=request.user)
-
-        db_folder = Path(settings.BACKUP_STORAGE_DIR) / f"backup_{backup.id}" / "extracted" / "databases"
-
-        if not db_folder.exists():
-            return Response({"error" : "Backup folder not found"}, status=status.HTTP_400_BAD_REQUEST)
         
-        calllogs_data = scan_and_extract_calllogs(backup, db_folder)
+        calllogs_data = scan_and_extract_calllogs_minio(backup)
+
+        if not calllogs_data:
+            return Response({
+                "error": "No Calllog data found in Minio backup"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         calllogs_stored = store_calllogs(backup, calllogs_data)
 
