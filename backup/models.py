@@ -79,7 +79,7 @@ class MediaFile(models.Model):
     mime_type = models.CharField(max_length=100, blank=True, null=True)
     size_bytes = models.BigIntegerField(blank=True, null=True)
     added_at = models.DateTimeField(default=timezone.now)
-    minio_path = models.CharField(max_length=500, blank=True, null=True)  # مسیر فایل در MinIO
+    minio_path = models.CharField(max_length=500, blank=True, null=True)  
 
 
 
