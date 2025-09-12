@@ -3,6 +3,10 @@ from .models import Backup, MediaFile, Message, Contact, CallLog
 from pathlib import Path
 from datetime import datetime, timezone
 import re
+from minio import Minio
+import logging
+from datetime import timedelta
+
 
 class BackupUploadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,20 +18,36 @@ class BackupUploadSerializer(serializers.ModelSerializer):
         return Backup.objects.create(user=user, **validated_data)
 
 
+minio_client = Minio(
+    "minio:9000",
+    access_key="minio",
+    secret_key="minio123",
+    secure=False
+)
 
 class MediaFileSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MediaFile
-        fields = ['id', 'file_name', 'file_url', 'mime_type', 'size_bytes', 'added_at']
+        fields = [ "id", "file_name", "minio_path", "media_type", "mime_type", "size_bytes", "added_at", "file_url",  ]
+
 
     def get_file_url(self, obj):
-        request = self.context.get('request')
-        if obj.file:
+        logger = logging.getLogger(__name__)
 
-            return request.build_absolute_uri(obj.file.url)
-        return None
+        if not obj.minio_path:
+            return None
+        try:
+            url = minio_client.presigned_get_object(
+                "backups",
+                obj.minio_path,
+                expires=timedelta(hours=1)
+            )
+            return url
+        except Exception as e:
+            logger.error(f"Error generating presigned URL for {obj.minio_path}: {e}")
+            return None
 
 
 
