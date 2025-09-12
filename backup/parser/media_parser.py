@@ -1,42 +1,47 @@
-from pathlib import Path
 import mimetypes
-from django.utils import timezone
-from ..models import Backup
 import re
-from ..serializers import  MediaParserSerializer
+from django.utils import timezone
 from django.core.files.base import ContentFile
-
-
+from minio import Minio
+from ..models import Backup
+from ..serializers import MediaParserSerializer
 
 INVALID_CHARS = r'[<>:"/\\|?*]'
-
-def sanitize_and_truncate_filename(file_path: Path, max_length: int = 100) -> str:
-
-    safe_name = re.sub(INVALID_CHARS, "_", file_path.stem)
-    ext = file_path.suffix
-    allowed_length = max_length - len(ext)
-    
-    if len(safe_name) > allowed_length:
-        safe_name = safe_name[:allowed_length]
-    return safe_name + ext
-
-
-
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
 
-def parse_media_type(media_dir: Path, backup_instance: Backup, media_type_filter: str) -> int:
+
+minio_client = Minio(
+    "minio:9000",         
+    access_key="minio",
+    secret_key="minio123",
+    secure=False
+)
+
+BUCKET_NAME = "backups"   
+
+def sanitize_and_truncate_filename(file_name: str, max_length: int = 100) -> str:
+    name, dot, ext = file_name.rpartition(".")
+    safe_name = re.sub(INVALID_CHARS, "_", name)
+    allowed_length = max_length - len(ext) - 1
+    if len(safe_name) > allowed_length:
+        safe_name = safe_name[:allowed_length]
+    return safe_name + dot + ext if ext else safe_name
+
+
+def parse_media_type_minio(backup_instance: Backup, media_type_filter: str) -> int:
     parsed_count = 0
-    
-    if not media_dir.exists():
-        raise ValueError(f"Media directory not found: {media_dir}")
 
-    for file_path in media_dir.rglob("*"):
-        if not file_path.is_file():
-            continue
+    prefix = f"{backup_instance.id}/{media_type_filter}s/"
+    objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
 
+    for obj in objects:
         try:
-            mime_type, _ = mimetypes.guess_type(file_path.name)
-            mime_type = mime_type or 'application/octet-stream'
+            file_name = obj.object_name.split("/")[-1]
+            if not file_name:
+                continue
+
+            mime_type, _ = mimetypes.guess_type(file_name)
+            mime_type = mime_type or "application/octet-stream"
 
             if media_type_filter == "photo" and not mime_type.startswith("image/"):
                 continue
@@ -44,24 +49,22 @@ def parse_media_type(media_dir: Path, backup_instance: Backup, media_type_filter
                 continue
             if media_type_filter == "audio" and not mime_type.startswith("audio/"):
                 continue
-            if media_type_filter == "document" and file_path.suffix.lower() not in DOCUMENT_EXTENSIONS:
-                continue
+            if media_type_filter == "document":
+                ext = "." + file_name.split(".")[-1].lower()
+                if ext not in DOCUMENT_EXTENSIONS:
+                    continue
 
-            with open(file_path, "rb") as f:
-                content = f.read()
-
-            safe_name = sanitize_and_truncate_filename(file_path)
-            django_file = ContentFile(content, name=safe_name)
+            safe_name = sanitize_and_truncate_filename(file_name)
 
             serializer = MediaParserSerializer(
                 data={
                     "backup": backup_instance.id,
-                    "file": django_file,
                     "file_name": safe_name,
                     "media_type": media_type_filter,
                     "mime_type": mime_type,
-                    "size_bytes": file_path.stat().st_size,
-                    "added_at": timezone.now()
+                    "size_bytes": obj.size,
+                    "added_at": timezone.now(),
+                    "minio_path": obj.object_name,  
                 }
             )
 
@@ -69,9 +72,10 @@ def parse_media_type(media_dir: Path, backup_instance: Backup, media_type_filter
                 serializer.save()
                 parsed_count += 1
             else:
-                raise ValueError(f"Validation failed for {file_path}: {serializer.errors}")
+                print(f"Validation failed for {file_name}: {serializer.errors}")
 
         except Exception as e:
-            raise  
+            print(f"Error processing {obj.object_name}: {e}")
 
     return parsed_count
+
