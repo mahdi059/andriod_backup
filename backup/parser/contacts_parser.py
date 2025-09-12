@@ -1,24 +1,28 @@
 from pathlib import Path
-from ..models import Backup
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 import sqlite3
 import re
 from typing import Dict, Iterable, List, Optional
-from ..serializers import  ContactParserSerializer
-from typing import Optional
-from datetime import timezone as dt_timezone
+from ..serializers import ContactParserSerializer
+from ..models import Backup
+from minio import Minio
+import tempfile
 
 
-
+minio_client = Minio(
+    "minio:9000",
+    access_key="minio",
+    secret_key="minio123",
+    secure=False
+)
+BUCKET_NAME = "backups"
 
 CONTACT_NAME_KEYS = {"name", "display_name", "full_name", "given_name", "first_name"}
 CONTACT_SURNAME_KEYS = {"family_name", "last_name", "surname"}
 CONTACT_PHONE_KEYS = {"phone_number", "number", "mobile", "tel", "msisdn"}
-
 EMAIL_KEYS = {"email", "e_mail", "mail"}
 GROUP_KEYS = {"group", "group_name", "label", "category"}
 ADDRESS_KEYS = {"address", "addr", "street", "city", "location"}
-
 
 
 def normalize_phone(value: str) -> str:
@@ -30,16 +34,6 @@ def normalize_phone(value: str) -> str:
     if s.startswith("98") and not s.startswith("+"):
         return "+98" + s[2:]
     return s
-
-
-def is_sqlite_file(path: Path) -> bool:
-    try:
-        if not path.is_file() or path.stat().st_size < 16:
-            return False
-        with path.open("rb") as f:
-            return f.read(16) == b"SQLite format 3\x00"
-    except OSError:
-        return False
 
 
 def _from_epoch_like(num: float) -> Optional[datetime]:
@@ -109,49 +103,85 @@ def _extract_contact_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
     }
 
 
-def scan_and_extract_contacts(backup: "Backup", db_dir: Path) -> List[Dict]:
+def scan_and_extract_contacts_minio(backup_instance: Backup) -> List[Dict]:
+    prefix = f"{backup_instance.id}/databases/"
     contacts = []
     seen_contacts = set()
-    for db_file in db_dir.rglob("*"):
-        if not db_file.is_file() or not is_sqlite_file(db_file):
+
+    print(f"[*] Scanning Minio for contacts in prefix: {prefix}")
+    objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+
+    for obj in objects:
+        print(f"[+] Found object: {obj.object_name} (size={obj.size})")
+
+        if not obj.object_name.lower().endswith((".db", ".sqlite")):
+            print(f"[-] Skipping non-sqlite file: {obj.object_name}")
             continue
+
         try:
-            conn = sqlite3.connect(db_file)
+            response = minio_client.get_object(BUCKET_NAME, obj.object_name)
+            file_bytes = response.read()
+            response.close()
+            response.release_conn()
+            print(f"[+] Successfully read {len(file_bytes)} bytes from {obj.object_name}")
+        except Exception as e:
+            print(f"[!] Error reading object {obj.object_name} from Minio: {e}")
+            continue
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
+            tmp_file.write(file_bytes)
+            tmp_file_path = tmp_file.name
+        print(f"[+] Wrote temp sqlite file: {tmp_file_path}")
+
+        try:
+            conn = sqlite3.connect(tmp_file_path, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            for (table,) in cursor.fetchall():
+            tables = cursor.fetchall()
+            print(f"[+] Tables in {obj.object_name}: {tables}")
+
+            for (table,) in tables:
+                print(f"[*] Checking table: {table}")
                 try:
-                    cursor.execute(f'SELECT * FROM "{table}" LIMIT 200')
+                    cursor.execute(f'SELECT * FROM "{table}"')
                     col_names = [d[0].lower() for d in cursor.description]
                     rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
-                except Exception:
+                    print(f"    -> Found {len(rows)} rows, columns={col_names}")
+                except Exception as e:
+                    print(f"    [!] Failed to read table {table}: {e}")
                     continue
+
                 if not rows or not _detect_contact_table(set(col_names)):
+                    print(f"    [-] Skipping table {table}, not matching contact schema")
                     continue
+
                 for row in rows:
                     data = _extract_contact_row(row)
+                    print(f"    [+] Extracted row: {data}")
                     if not data:
                         continue
-                    data["backup"] = backup.id
+                    data["backup"] = backup_instance.id
                     key = (data["name"], data["phone_number"])
                     if key in seen_contacts:
                         continue
                     seen_contacts.add(key)
                     contacts.append(data)
-        except sqlite3.DatabaseError:
+
+        except Exception as e:
+            print(f"[!] Error scanning {obj.object_name}: {e}")
             continue
         finally:
             try:
                 conn.close()
             except:
                 pass
+
+    print(f"[*] Finished scanning. Total contacts extracted: {len(contacts)}")
     return contacts
 
 
-def store_contacts(backup: "Backup", contacts: List[Dict]) -> int:
+def store_contacts(backup: Backup, contacts: List[Dict]) -> int:
     serializer = ContactParserSerializer(data=contacts, many=True)
     serializer.is_valid(raise_exception=True)
     serializer.save(backup=backup)
     return len(serializer.data)
-
-
