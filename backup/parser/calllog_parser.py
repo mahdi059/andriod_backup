@@ -1,13 +1,19 @@
-from pathlib import Path
 from ..models import Backup
-from datetime import datetime
+from ..serializers import CallLogParserSerializer
+from datetime import datetime, timezone as dt_timezone
+from minio import Minio
 import sqlite3
+import tempfile
 import re
 from typing import Dict, Iterable, List, Optional
-from ..serializers import CallLogParserSerializer
-from typing import Optional
-from datetime import timezone as dt_timezone
 
+minio_client = Minio(
+    "minio:9000",
+    access_key="minio",
+    secret_key="minio123",
+    secure=False
+)
+BUCKET_NAME = "backups"
 
 CALLLOG_PHONE_KEYS = {"phone_number", "number", "mobile", "tel", "msisdn"}
 CALLLOG_TYPE_KEYS = {"call_type", "type", "direction"}
@@ -26,17 +32,6 @@ def normalize_phone(value: str) -> str:
     return s
 
 
-def is_sqlite_file(path: Path) -> bool:
-    try:
-        if not path.is_file() or path.stat().st_size < 16:
-            return False
-        with path.open("rb") as f:
-            return f.read(16) == b"SQLite format 3\x00"
-    except OSError:
-        return False
-
-
-
 def _from_epoch_like(num: float) -> Optional[datetime]:
     try:
         length = len(str(int(num)))
@@ -51,7 +46,6 @@ def _from_epoch_like(num: float) -> Optional[datetime]:
     except Exception:
         return None
     return None
-
 
 
 def parse_datetime_flexible(value) -> Optional[datetime]:
@@ -79,15 +73,16 @@ def parse_datetime_flexible(value) -> Optional[datetime]:
 
 def pick_first(row: Dict[str, object], keys: Iterable[str]) -> Optional[object]:
     for k in keys:
-        if row.get(k):
+        if row.get(k) is not None and row.get(k) != "":
             return row.get(k)
     return None
 
 
 def _detect_calllog_table(columns: set) -> bool:
-    return (columns & CALLLOG_PHONE_KEYS) and (
-        columns & CALLLOG_DATE_KEYS or columns & CALLLOG_TYPE_KEYS or columns & CALLLOG_DURATION_KEYS
-    )
+    has_phone = bool(columns & CALLLOG_PHONE_KEYS)
+    has_date = bool(columns & CALLLOG_DATE_KEYS)
+    has_type_or_duration = bool(columns & (CALLLOG_TYPE_KEYS | CALLLOG_DURATION_KEYS))
+    return has_phone and has_date and has_type_or_duration
 
 
 def _map_call_type(raw) -> str:
@@ -110,55 +105,91 @@ def _extract_calllog_row(row: Dict[str, object]) -> Optional[Dict[str, object]]:
     phone = normalize_phone(phone)
     dt_raw = pick_first(row, CALLLOG_DATE_KEYS)
     dt = parse_datetime_flexible(dt_raw)
+    if dt is None:
+        return None
+
+    dur_raw = pick_first(row, CALLLOG_DURATION_KEYS)
+    try:
+        duration_seconds = int(dur_raw) if dur_raw is not None and str(dur_raw).isdigit() else 0
+    except Exception:
+        duration_seconds = 0
+
     return {
         "phone_number": phone,
         "call_type": _map_call_type(pick_first(row, CALLLOG_TYPE_KEYS)),
         "call_date": dt,
-        "duration_seconds": int(pick_first(row, CALLLOG_DURATION_KEYS) or 0)
+        "duration_seconds": duration_seconds
     }
 
 
-def scan_and_extract_calllogs(backup: "Backup", db_dir: Path) -> List[Dict]:
-    calls = []
+def scan_and_extract_calllogs_minio(backup: Backup) -> List[Dict]:
+    prefix = f"{backup.id}/databases/"
+    calls: List[Dict] = []
     seen_calls = set()
-    for db_file in db_dir.rglob("*"):
-        if not db_file.is_file() or not is_sqlite_file(db_file):
+
+    objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
+
+    for obj in objects:
+        if not obj.object_name.lower().endswith((".db", ".sqlite")):
             continue
+
         try:
-            conn = sqlite3.connect(db_file)
+            response = minio_client.get_object(BUCKET_NAME, obj.object_name)
+            file_bytes = response.read()
+            response.close()
+            response.release_conn()
+        except Exception:
+            continue
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
+            tmp_file.write(file_bytes)
+            tmp_file_path = tmp_file.name
+
+        try:
+            conn = sqlite3.connect(tmp_file_path, check_same_thread=False)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            for (table,) in cursor.fetchall():
+
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+            except Exception:
+                tables = []
+
+            for (table,) in tables:
                 try:
-                    cursor.execute(f'SELECT * FROM "{table}" LIMIT 200')
+                    cursor.execute(f'SELECT * FROM "{table}" LIMIT 1000')
+                    if cursor.description is None:
+                        continue
                     col_names = [d[0].lower() for d in cursor.description]
                     rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
                 except Exception:
                     continue
+
                 if not rows or not _detect_calllog_table(set(col_names)):
                     continue
+
                 for row in rows:
                     data = _extract_calllog_row(row)
                     if not data:
                         continue
                     data["backup"] = backup.id
                     ts = int(data["call_date"].timestamp()) if data["call_date"] else 0
-                    key = (data["phone_number"], ts, data["call_type"])
+                    key = (data["phone_number"], ts, data["call_type"], data["duration_seconds"])
                     if key in seen_calls:
                         continue
                     seen_calls.add(key)
                     calls.append(data)
-        except sqlite3.DatabaseError:
-            continue
+
         finally:
             try:
                 conn.close()
             except:
                 pass
+
     return calls
 
 
-def store_calllogs(backup: "Backup", calls: List[Dict]) -> int:
+def store_calllogs(backup: Backup, calls: List[Dict]) -> int:
     serializer = CallLogParserSerializer(data=calls, many=True)
     serializer.is_valid(raise_exception=True)
     serializer.save(backup=backup)
