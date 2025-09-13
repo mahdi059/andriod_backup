@@ -4,8 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
 from pathlib import Path
 import logging
-from .models import Backup, MediaFile, Message, Contact, CallLog
-from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer
+from .models import Backup, MediaFile, Message, Contact, CallLog, App
+from .serializers import BackupUploadSerializer, MediaFileSerializer, MessageSerializer, ContactSerializer, CallLogSerializer, AppParserSerializer
 from django.shortcuts import get_object_or_404
 from .pagination import StandardResultsSetPagination 
 from .parser.media_parser import  parse_media_type_minio
@@ -259,5 +259,23 @@ class CallLogListAPIView(generics.ListAPIView):
         backup = get_object_or_404(Backup, pk=pk, user=user)
 
         queryset = CallLog.objects.filter(backup=backup)
+
+        return queryset.order_by('created_at')
+    
+
+
+
+class AppListAPIView(generics.ListAPIView):
+    serializer_class = AppParserSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        pk = self.kwargs.get("pk")
+
+        backup = get_object_or_404(Backup, pk=pk, user=user)
+
+        queryset = App.objects.filter(backup=backup)
 
         return queryset.order_by('created_at')
