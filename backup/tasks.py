@@ -4,22 +4,31 @@ from . import utils
 import logging
 import tempfile
 from pathlib import Path
+from minio import Minio
 
 logger = logging.getLogger(__name__)
+
+minio_client = Minio(
+    "minio:9000",
+    access_key="minio",
+    secret_key="minio123",
+    secure=False
+)
+
+ORIGINAL_BUCKET_NAME = "original-files"
 
 @shared_task
 def process_backup_task(backup_id: int):
     try:
         backup = Backup.objects.get(id=backup_id)
 
-        if not backup.original_file:
-            raise ValueError("Uploaded backup file is missing.")
+        if not backup.original_minio_path:
+            raise ValueError("Uploaded backup file path is missing.")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".ab") as tmp_file:
-            for chunk in backup.original_file.chunks():
-                tmp_file.write(chunk)
+            response = minio_client.get_object(ORIGINAL_BUCKET_NAME, backup.original_minio_path)
+            tmp_file.write(response.read())
             tmp_file_path = Path(tmp_file.name)
-
 
         stats = utils.process_ab_file(str(tmp_file_path), backup.id)
 
