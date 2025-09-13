@@ -5,19 +5,20 @@ import os
 
 class Backup(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    original_file = models.FileField(upload_to='backups/')
-    original_file_name = models.CharField(max_length=255, blank=True)  
+    original_minio_path = models.CharField(max_length=512)
+    original_file_name = models.CharField(max_length=255, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     error_message = models.TextField(blank=True, null=True)
     processed = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
-        if self.original_file and not self.original_file_name:
-            self.original_file_name = self.original_file.name
+        if self.original_minio_path and not self.original_file_name:
+            self.original_file_name = self.original_minio_path.split("/")[-1]
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Backup {self.id} by {self.user.username}"
+
 
 
 class Contact(models.Model):
