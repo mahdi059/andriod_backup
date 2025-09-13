@@ -29,8 +29,8 @@ class BackupUploadView(views.APIView):
         backup = serializer.save()
 
         try:
-            if not backup.original_file or backup.original_file.size == 0:
-                raise ValueError("Uploaded backup file is missing or empty.")
+            if not backup.original_minio_path:
+                raise ValueError("Uploaded backup file is missing.")
 
             process_backup_task.delay(backup.id)
 
@@ -44,6 +44,7 @@ class BackupUploadView(views.APIView):
             backup.error_message = str(exc)
             backup.save(update_fields=['error_message'])
             return Response({"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 class BackupStatusView(views.APIView):
