@@ -17,5 +17,6 @@ urlpatterns = [
     path('<int:pk>/media-list/',  views.MediaListAPIView.as_view(), name='media-list'),
     path('<int:pk>/contact-list/', views.ContactListAPIView.as_view(), name='contact-list'),
     path('<int:pk>/calllog-list/', views.CallLogListAPIView.as_view(), name='calllog-list'),
+    path('<int:pk>/app-list/', views.AppListAPIView.as_view(), name='app-list'),
 
 ]
