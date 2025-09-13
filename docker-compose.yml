@@ -8,9 +8,18 @@ services:
     depends_on:
       - redis
       - minio
+      - postgres
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=backup_db
+      - DATABASE_USER=backup_user
+      - DATABASE_PASSWORD=backup_pass
+    command: >
+      sh -c "./tools/wait-for-it.sh postgres:5432 --timeout=30 --strict -- 
+             python manage.py runserver 0.0.0.0:8000"
 
   celery:
     build: .
@@ -19,10 +28,18 @@ services:
     depends_on:
       - redis
       - minio
-    command: celery -A config worker --loglevel=info
+      - postgres
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=backup_db
+      - DATABASE_USER=backup_user
+      - DATABASE_PASSWORD=backup_pass
+    command: >
+      sh -c "./tools/wait-for-it.sh postgres:5432 --timeout=30 --strict -- 
+             celery -A config worker --loglevel=info"
 
   redis:
     image: redis:7-alpine
@@ -41,5 +58,19 @@ services:
     volumes:
       - minio_data:/data
 
+  postgres:
+    image: postgres:15
+    container_name: pg_backup
+    restart: always
+    environment:
+      POSTGRES_USER: backup_user
+      POSTGRES_PASSWORD: backup_pass
+      POSTGRES_DB: backup_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
 volumes:
   minio_data:
+  pg_data:
