@@ -35,10 +35,41 @@ venv\Scripts\activate # for Windows
 
 ### Configuration
 
-The uploaded backup files are stored in the directory specified by `BACKUP_STORAGE_DIR` in the Django settings. By default, this is set to: media/backups
-If you want to use a different directory, update the `BACKUP_STORAGE_DIR` value in `settings.py`.
+1.Before running the project, you need to create a .env file in the root directory.
+ This file contains all environment variables required by the system, such as database credentials, Redis, MinIO, and other service configurations.
 
-3.Install dependencies
+#### Example `.env` file:
+
+
+```bash
+SECRET_KEY=django-insecure-CHANGE_ME
+DEBUG=True
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+DATABASE_HOST=postgres
+DATABASE_PORT=5432
+DATABASE_NAME=backup_db
+DATABASE_USER=backup_user
+DATABASE_PASSWORD=backup_pass
+
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+MINIO_STORAGE_ENDPOINT=minio:9000
+MINIO_STORAGE_ACCESS_KEY=minio
+MINIO_STORAGE_SECRET_KEY=minio123
+MINIO_STORAGE_USE_SSL=False
+MINIO_STORAGE_MEDIA_BUCKET_NAME=backups
+MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET=True
+
+REDIS_PORT=6379
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+POSTGRES_PORT=5432
+```
+
+
+2.Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
