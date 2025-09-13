@@ -6,16 +6,7 @@ import re
 from minio import Minio
 import logging
 from datetime import timedelta
-
-
-class BackupUploadSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Backup
-        fields = ['original_file']
-
-    def create(self, validated_data):
-        user = self.context['request'].user
-        return Backup.objects.create(user=user, **validated_data)
+import uuid
 
 
 minio_client = Minio(
@@ -24,6 +15,51 @@ minio_client = Minio(
     secret_key="minio123",
     secure=False
 )
+
+
+ORIGINAL_BUCKET_NAME = "original-files"
+
+def ensure_original_bucket():
+    if not minio_client.bucket_exists(ORIGINAL_BUCKET_NAME):
+        minio_client.make_bucket(ORIGINAL_BUCKET_NAME)
+
+
+class BackupUploadSerializer(serializers.ModelSerializer):
+    original_file = serializers.FileField(write_only=True)
+
+    class Meta:
+        model = Backup
+        fields = ['original_file']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        file_obj = validated_data['original_file']
+
+        ensure_original_bucket() 
+
+        backup = Backup.objects.create(
+            user=user,
+            original_file_name=file_obj.name
+        )
+
+        file_key = f"original_file/{backup.id}/{file_obj.name}"
+
+        minio_client.put_object(
+            ORIGINAL_BUCKET_NAME,
+            file_key,
+            file_obj,
+            length=file_obj.size,
+            content_type=file_obj.content_type
+        )
+
+        backup.original_minio_path = file_key
+        backup.save(update_fields=['original_minio_path'])
+
+        return backup
+
+
+
+
 
 class MediaFileSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
