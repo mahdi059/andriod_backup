@@ -1,18 +1,13 @@
 from pathlib import Path
-import os
+from decouple import config, Csv
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-
-SECRET_KEY = 'django-insecure-(i+hc4290kf=yli%%7@ilb0n-k^_=qv6$@_0pqiza&__-y8r8r'
-
-
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
+SECRET_KEY = config('SECRET_KEY')
+DEBUG = config('DEBUG', default=False, cast=bool)
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv(), default=['127.0.0.1', 'localhost'])
 
 
 INSTALLED_APPS = [
@@ -25,6 +20,7 @@ INSTALLED_APPS = [
     'backup',
     'rest_framework',
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -56,61 +52,36 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DATABASE_NAME', 'backup_db'),
-        'USER': os.getenv('DATABASE_USER', 'backup_user'),
-        'PASSWORD': os.getenv('DATABASE_PASSWORD', 'backup_pass'),
-        'HOST': os.getenv('DATABASE_HOST', 'localhost'),
-        'PORT': os.getenv('DATABASE_PORT', '5432'),
+        'NAME': config('DATABASE_NAME'),
+        'USER': config('DATABASE_USER'),
+        'PASSWORD': config('DATABASE_PASSWORD'),
+        'HOST': config('DATABASE_HOST'),
+        'PORT': config('DATABASE_PORT'),
     }
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',},
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
-
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
 STATIC_URL = 'static/'
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -121,14 +92,11 @@ REST_FRAMEWORK = {
 }
 
 
-BACKUP_STORAGE_DIR = 'media/backups'
-
-
 
 DEFAULT_FILE_STORAGE = 'minio_storage.storage.MinioMediaStorage'
-MINIO_STORAGE_ENDPOINT = 'minio:9000' 
-MINIO_STORAGE_ACCESS_KEY = 'minio'
-MINIO_STORAGE_SECRET_KEY = 'minio123'
-MINIO_STORAGE_USE_SSL = False
-MINIO_STORAGE_MEDIA_BUCKET_NAME = 'backups'  
-MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET = True
+MINIO_STORAGE_ENDPOINT = config('MINIO_STORAGE_ENDPOINT', default='minio:9000')
+MINIO_STORAGE_ACCESS_KEY = config('MINIO_STORAGE_ACCESS_KEY', default='minio')
+MINIO_STORAGE_SECRET_KEY = config('MINIO_STORAGE_SECRET_KEY', default='minio123')
+MINIO_STORAGE_USE_SSL = config('MINIO_STORAGE_USE_SSL', default=False, cast=bool)
+MINIO_STORAGE_MEDIA_BUCKET_NAME = config('MINIO_STORAGE_MEDIA_BUCKET_NAME', default='backups')
+MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET = config('MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET', default=True, cast=bool)
