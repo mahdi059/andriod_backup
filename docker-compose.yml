@@ -6,19 +6,22 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - redis
-      - minio
-      - postgres
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=backup_db
-      - DATABASE_USER=backup_user
-      - DATABASE_PASSWORD=backup_pass
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
     command: >
-      sh -c "./tools/wait-for-it.sh postgres:5432 --timeout=30 --strict -- 
+      sh -c "./tools/wait-for-it.sh ${DATABASE_HOST}:${DATABASE_PORT} --timeout=60 --strict --
              python manage.py runserver 0.0.0.0:8000"
 
   celery:
@@ -26,35 +29,38 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - redis
-      - minio
-      - postgres
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=backup_db
-      - DATABASE_USER=backup_user
-      - DATABASE_PASSWORD=backup_pass
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
     command: >
-      sh -c "./tools/wait-for-it.sh postgres:5432 --timeout=30 --strict -- 
+      sh -c "./tools/wait-for-it.sh ${DATABASE_HOST}:${DATABASE_PORT} --timeout=60 --strict --
              celery -A config worker --loglevel=info"
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
 
   minio:
     image: minio/minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
-    command: server /data --console-address ":9001"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     volumes:
       - minio_data:/data
 
@@ -63,13 +69,19 @@ services:
     container_name: pg_backup
     restart: always
     environment:
-      POSTGRES_USER: backup_user
-      POSTGRES_PASSWORD: backup_pass
-      POSTGRES_DB: backup_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   minio_data:
