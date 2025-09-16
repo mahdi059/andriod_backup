@@ -8,6 +8,7 @@ from minio.error import S3Error
 import tempfile
 import shutil
 import libarchive.public
+import logging
 
 
 minio_client = Minio(
@@ -18,6 +19,9 @@ minio_client = Minio(
 )
 
 BUCKET_NAME = "backups"
+
+
+logger = logging.getLogger(__name__)
 
 def ensure_bucket():
     if not minio_client.bucket_exists(BUCKET_NAME):
@@ -80,10 +84,10 @@ def extract_tar_to_temp(tar_path: Path) -> Path:
                                 f.write(block)
 
                 except Exception as e:
-                    print(f"⚠️ Failed to extract {entry.pathname}: {e}")
+                    logger.warning("⚠️ Failed to extract", entry.pathname, e)
 
     except Exception as e:
-        print(f"❌ Failed to open archive: {e}")
+        logger.error("❌ Failed to open archive:", e)
 
     return temp_dir
 
@@ -104,7 +108,7 @@ def organize_extracted_files_to_minio(extracted_dir: Path, backup_id: int) -> di
             stats[category] += 1
             file_path.unlink()  
         except S3Error as e:
-            print(f"Failed to upload {file_path} -> {e}")
+            logger.error("Failed to upload %s -> %s", file_path, e)
     return stats
 
 def process_ab_file(ab_file_path: str, backup_id: int) -> dict:
