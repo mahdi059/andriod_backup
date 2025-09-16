@@ -5,6 +5,7 @@ from django.core.files.base import ContentFile
 from minio import Minio
 from ..models import Backup
 from ..serializers import MediaParserSerializer
+import logging
 
 INVALID_CHARS = r'[<>:"/\\|?*]'
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
@@ -18,6 +19,9 @@ minio_client = Minio(
 )
 
 BUCKET_NAME = "backups"   
+
+
+logger = logging.getLogger(__name__)
 
 def sanitize_and_truncate_filename(file_name: str, max_length: int = 100) -> str:
     name, dot, ext = file_name.rpartition(".")
@@ -72,10 +76,9 @@ def parse_media_type_minio(backup_instance: Backup, media_type_filter: str) -> i
                 serializer.save()
                 parsed_count += 1
             else:
-                print(f"Validation failed for {file_name}: {serializer.errors}")
+                logger.error("Validation failed for %s : %s", file_name, serializer.errors)
 
         except Exception as e:
-            print(f"Error processing {obj.object_name}: {e}")
-
+            logger.error("Error processing %s : %s", obj.object_name, e)
     return parsed_count
 

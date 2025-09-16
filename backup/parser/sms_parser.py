@@ -6,7 +6,7 @@ from ..serializers import MessageParserSerializer
 from django.utils.timezone import make_aware, get_default_timezone
 from ..models import Backup
 from minio import Minio
-
+import logging 
 
 
 minio_client = Minio(
@@ -18,6 +18,9 @@ minio_client = Minio(
 
 
 BUCKET_NAME = "backups"
+
+
+logger = logging.getLogger(__name__)
 
 def convert_timestamp(ts):
     try:
@@ -52,7 +55,8 @@ def parse_and_save_sms_minio(backup_instance: Backup):
             sms_list = json.loads(json_text)
         
         except Exception as e:
-            print(f"Error reading/parsing object {obj.object_name} from Minio: {e}")
+            logger.error("Error reading/parsing object %s from Minio: %s", obj.object_name, e)
+
             continue  
 
         for sms in sms_list:
@@ -82,9 +86,9 @@ def parse_and_save_sms_minio(backup_instance: Backup):
                     serializer.save()
                     count += 1
                 else:
-                    print(f"Validation failed for SMS in {obj.object_name}: {serializer.errors}")
+                    logger.error("Validation failed for SMS in %s : %s", obj.bucket_name, serializer.errors)
 
             except Exception as e:
-                print(f"Error saving SMS from {obj.object_name}: {e}")
+                logger.error("Error saving SMS from %s : %s", obj.object_name, e)
 
     return count

@@ -7,7 +7,7 @@ from ..serializers import ContactParserSerializer
 from ..models import Backup
 from minio import Minio
 import tempfile
-
+import logging
 
 minio_client = Minio(
     "minio:9000",
@@ -16,6 +16,9 @@ minio_client = Minio(
     secure=False
 )
 BUCKET_NAME = "backups"
+
+
+logger = logging.getLogger(__name__)
 
 CONTACT_NAME_KEYS = {"name", "display_name", "full_name", "given_name", "first_name"}
 CONTACT_SURNAME_KEYS = {"family_name", "last_name", "surname"}
@@ -108,14 +111,14 @@ def scan_and_extract_contacts_minio(backup_instance: Backup) -> List[Dict]:
     contacts = []
     seen_contacts = set()
 
-    print(f"[*] Scanning Minio for contacts in prefix: {prefix}")
+    logger.info("[*] Scanning Minio for contacts in prefix:", prefix)
     objects = minio_client.list_objects(BUCKET_NAME, prefix=prefix, recursive=True)
 
     for obj in objects:
-        print(f"[+] Found object: {obj.object_name} (size={obj.size})")
+        logger.info("[+] Found object: %s (size:%s)",obj.object_name, obj.size)
 
         if not obj.object_name.lower().endswith((".db", ".sqlite")):
-            print(f"[-] Skipping non-sqlite file: {obj.object_name}")
+            logger.info("[-] Skipping non-sqlite file:", obj.object_name)
             continue
 
         try:
@@ -123,41 +126,40 @@ def scan_and_extract_contacts_minio(backup_instance: Backup) -> List[Dict]:
             file_bytes = response.read()
             response.close()
             response.release_conn()
-            print(f"[+] Successfully read {len(file_bytes)} bytes from {obj.object_name}")
+            logger.info("[+] Successfully read %s bytes from %s", len(file_bytes), obj.object_name)
         except Exception as e:
-            print(f"[!] Error reading object {obj.object_name} from Minio: {e}")
+            logger.error("[!] Error reading object %s from Minio: %s", obj.object_name, e)
             continue
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp_file:
             tmp_file.write(file_bytes)
             tmp_file_path = tmp_file.name
-        print(f"[+] Wrote temp sqlite file: {tmp_file_path}")
+        logger.info("[+] Wrote temp sqlite file: ", tmp_file_path)
 
         try:
             conn = sqlite3.connect(tmp_file_path, check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
-            print(f"[+] Tables in {obj.object_name}: {tables}")
-
+            logger.info("[+] Tables in %s : %s", obj.object_name, tables)
             for (table,) in tables:
-                print(f"[*] Checking table: {table}")
+                logger.info("[*] Checking table:", table)
                 try:
                     cursor.execute(f'SELECT * FROM "{table}"')
                     col_names = [d[0].lower() for d in cursor.description]
                     rows = [dict(zip(col_names, r)) for r in cursor.fetchall()]
-                    print(f"    -> Found {len(rows)} rows, columns={col_names}")
+                    logger.info("------> Found %s rows, columns=%s", len(rows), col_names)
                 except Exception as e:
-                    print(f"    [!] Failed to read table {table}: {e}")
+                    logger.error("------> [!] Failed to read table %s : %s", table, e)
                     continue
 
                 if not rows or not _detect_contact_table(set(col_names)):
-                    print(f"    [-] Skipping table {table}, not matching contact schema")
+                    logger.info("------> [-] Skipping table %s, not matching contact schema", table)
                     continue
 
                 for row in rows:
                     data = _extract_contact_row(row)
-                    print(f"    [+] Extracted row: {data}")
+                    logger.info("------> [+] Extracted row:", data)
                     if not data:
                         continue
                     data["backup"] = backup_instance.id
@@ -168,7 +170,7 @@ def scan_and_extract_contacts_minio(backup_instance: Backup) -> List[Dict]:
                     contacts.append(data)
 
         except Exception as e:
-            print(f"[!] Error scanning {obj.object_name}: {e}")
+            logger.error("[!] Error scanning %s : %s", obj.object_name, e)
             continue
         finally:
             try:
@@ -176,7 +178,7 @@ def scan_and_extract_contacts_minio(backup_instance: Backup) -> List[Dict]:
             except:
                 pass
 
-    print(f"[*] Finished scanning. Total contacts extracted: {len(contacts)}")
+    logger.info("[*] Finished scanning. Total contacts extracted:", len(contacts))
     return contacts
 
 

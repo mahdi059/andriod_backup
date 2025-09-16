@@ -14,16 +14,16 @@ minio_client = Minio(
 
 BUCKET_NAME = "backups"
 
-# لاگر اصلی
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# جلوگیری از لاگ‌های اضافی کتابخونه‌ها
+
 logging.getLogger("androguard").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("minio").setLevel(logging.WARNING)
 
-# هندلر برای ترمینال
+
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 
