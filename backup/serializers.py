@@ -19,6 +19,9 @@ minio_client = Minio(
 
 ORIGINAL_BUCKET_NAME = "original-files"
 
+
+logger = logging.getLogger(__name__)
+
 def ensure_original_bucket():
     if not minio_client.bucket_exists(ORIGINAL_BUCKET_NAME):
         minio_client.make_bucket(ORIGINAL_BUCKET_NAME)
@@ -70,7 +73,6 @@ class MediaFileSerializer(serializers.ModelSerializer):
 
 
     def get_file_url(self, obj):
-        logger = logging.getLogger(__name__)
 
         if not obj.minio_path:
             return None
@@ -199,7 +201,7 @@ class ContactParserSerializer(serializers.ModelSerializer):
     
 
     def validate_created_at(self, value):
-        print("DEBUG created_at value:", value, type(value))
+        logger.debug("Created_at value received: %s (type: %s)", value, type(value))
         if value is None or not isinstance(value, datetime):
             raise serializers.ValidationError("Created_at must be a valid datetime.")
         if value.tzinfo is None:
