@@ -9,13 +9,19 @@ import tempfile
 import shutil
 import libarchive.public
 import logging
+from decouple import config
 
+
+MINIO_ENDPOINT = config("MINIO_STORAGE_ENDPOINT")
+MINIO_ACCESS_KEY = config("MINIO_STORAGE_ACCESS_KEY")
+MINIO_SECRET_KEY = config("MINIO_STORAGE_SECRET_KEY")
+MINIO_SECURE = config("MINIO_STORAGE_USE_SSL")
 
 minio_client = Minio(
-    "minio:9000", 
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
+    MINIO_ENDPOINT,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=MINIO_SECURE
 )
 
 BUCKET_NAME = "backups"
