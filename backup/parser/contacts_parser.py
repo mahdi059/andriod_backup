@@ -7,7 +7,7 @@ from ..serializers import ContactParserSerializer
 from ..models import Backup
 import tempfile
 import logging
-from ..utils import minio_client
+from ..utils import minio_client, normalize_phone, parse_datetime_flexible, pick_first
 
 
 BUCKET_NAME = "backups"
@@ -22,61 +22,6 @@ GROUP_KEYS = {"group", "group_name", "label", "category"}
 ADDRESS_KEYS = {"address", "addr", "street", "city", "location"}
 
 
-def normalize_phone(value: str) -> str:
-    if not value:
-        return ""
-    s = re.sub(r"[\s\-\(\)]", "", str(value).strip())
-    if s.startswith("0098"):
-        return "+98" + s[4:]
-    if s.startswith("98") and not s.startswith("+"):
-        return "+98" + s[2:]
-    return s
-
-
-def _from_epoch_like(num: float) -> Optional[datetime]:
-    try:
-        length = len(str(int(num)))
-        if length <= 10:
-            return datetime.fromtimestamp(num, tz=dt_timezone.utc)
-        if length <= 13:
-            return datetime.fromtimestamp(num / 1_000, tz=dt_timezone.utc)
-        if length <= 16:
-            return datetime.fromtimestamp(num / 1_000_000, tz=dt_timezone.utc)
-        if length <= 19:
-            return datetime.fromtimestamp(num / 1_000_000_000, tz=dt_timezone.utc)
-    except Exception:
-        return None
-    return None
-
-
-def parse_datetime_flexible(value) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return _from_epoch_like(value)
-    s = str(value).strip()
-    if not s:
-        return None
-    try:
-        dt = datetime.fromisoformat(s)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=dt_timezone.utc)
-        return dt
-    except Exception:
-        pass
-    if s.isdigit():
-        try:
-            return _from_epoch_like(int(float(s)))
-        except Exception:
-            return None
-    return None
-
-
-def pick_first(row: Dict[str, object], keys: Iterable[str]) -> Optional[object]:
-    for k in keys:
-        if row.get(k):
-            return row.get(k)
-    return None
 
 
 def _detect_contact_table(columns: set) -> bool:
