@@ -10,12 +10,15 @@ import shutil
 import libarchive.public
 import logging
 from decouple import config
+from datetime import datetime, timezone as dt_timezone
+from typing import Dict, Iterable, Optional
+
 
 
 MINIO_ENDPOINT = config("MINIO_STORAGE_ENDPOINT")
 MINIO_ACCESS_KEY = config("MINIO_STORAGE_ACCESS_KEY")
 MINIO_SECRET_KEY = config("MINIO_STORAGE_SECRET_KEY")
-MINIO_SECURE = config("MINIO_STORAGE_USE_SSL")
+MINIO_SECURE = config("MINIO_STORAGE_USE_SSL",default=False, cast=bool)
 
 minio_client = Minio(
     MINIO_ENDPOINT,
@@ -133,3 +136,60 @@ def process_ab_file(ab_file_path: str, backup_id: int) -> dict:
     shutil.rmtree(extracted_dir, ignore_errors=True)
 
     return stats
+
+
+def normalize_phone(value: str) -> str:
+    if not value:
+        return ""
+    s = re.sub(r"[\s\-\(\)]", "", str(value).strip())
+    if s.startswith("0098"):
+        return "+98" + s[4:]
+    if s.startswith("98") and not s.startswith("+"):
+        return "+98" + s[2:]
+    return s
+
+
+def _from_epoch_like(num: float) -> Optional[datetime]:
+    try:
+        length = len(str(int(num)))
+        if length <= 10:
+            return datetime.fromtimestamp(num, tz=dt_timezone.utc)
+        if length <= 13:
+            return datetime.fromtimestamp(num / 1_000, tz=dt_timezone.utc)
+        if length <= 16:
+            return datetime.fromtimestamp(num / 1_000_000, tz=dt_timezone.utc)
+        if length <= 19:
+            return datetime.fromtimestamp(num / 1_000_000_000, tz=dt_timezone.utc)
+    except Exception:
+        return None
+    return None
+
+
+def parse_datetime_flexible(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return _from_epoch_like(value)
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=dt_timezone.utc)
+        return dt
+    except Exception:
+        pass
+    if s.isdigit():
+        try:
+            return _from_epoch_like(int(float(s)))
+        except Exception:
+            return None
+    return None
+
+
+def pick_first(row: Dict[str, object], keys: Iterable[str]) -> Optional[object]:
+    for k in keys:
+        if row.get(k) is not None and row.get(k) != "":
+            return row.get(k)
+    return None
