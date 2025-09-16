@@ -1,18 +1,13 @@
 from ..models import Backup
 from ..serializers import CallLogParserSerializer
 from datetime import datetime, timezone as dt_timezone
-from minio import Minio
+
 import sqlite3
 import tempfile
 import re
 from typing import Dict, Iterable, List, Optional
+from ..utils import minio_client
 
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
 BUCKET_NAME = "backups"
 
 CALLLOG_PHONE_KEYS = {"phone_number", "number", "mobile", "tel", "msisdn"}

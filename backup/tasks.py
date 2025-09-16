@@ -4,16 +4,11 @@ from . import utils
 import logging
 import tempfile
 from pathlib import Path
-from minio import Minio
+from .utils import minio_client
 
 logger = logging.getLogger(__name__)
 
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
+
 
 ORIGINAL_BUCKET_NAME = "original-files"
 

@@ -1,22 +1,15 @@
 import mimetypes
 import re
 from django.utils import timezone
-from django.core.files.base import ContentFile
-from minio import Minio
 from ..models import Backup
 from ..serializers import MediaParserSerializer
+from ..utils import minio_client
 import logging
 
 INVALID_CHARS = r'[<>:"/\\|?*]'
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt"}
 
 
-minio_client = Minio(
-    "minio:9000",         
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
 
 BUCKET_NAME = "backups"   
 

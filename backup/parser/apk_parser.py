@@ -1,16 +1,10 @@
 from ..serializers import AppParserSerializer
 from ..models import Backup
-from minio import Minio
 import logging
 import tempfile
 from androguard.core.apk import APK
+from ..utils import minio_client
 
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
 
 BUCKET_NAME = "backups"
 

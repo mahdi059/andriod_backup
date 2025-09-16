@@ -5,16 +5,8 @@ import zlib
 from ..serializers import MessageParserSerializer
 from django.utils.timezone import make_aware, get_default_timezone
 from ..models import Backup
-from minio import Minio
 import logging 
-
-
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
+from ..utils import minio_client
 
 
 BUCKET_NAME = "backups"

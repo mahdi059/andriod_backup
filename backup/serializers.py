@@ -1,20 +1,11 @@
 from rest_framework import serializers
 from .models import Backup, MediaFile, Message, Contact, CallLog, App
-from pathlib import Path
 from datetime import datetime, timezone
 import re
-from minio import Minio
 import logging
 from datetime import timedelta
-import uuid
+from .utils import minio_client
 
-
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
 
 
 ORIGINAL_BUCKET_NAME = "original-files"

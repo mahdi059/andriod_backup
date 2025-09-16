@@ -5,18 +5,12 @@ import re
 from typing import Dict, Iterable, List, Optional
 from ..serializers import ContactParserSerializer
 from ..models import Backup
-from minio import Minio
 import tempfile
 import logging
+from ..utils import minio_client
 
-minio_client = Minio(
-    "minio:9000",
-    access_key="minio",
-    secret_key="minio123",
-    secure=False
-)
+
 BUCKET_NAME = "backups"
-
 
 logger = logging.getLogger(__name__)
 
